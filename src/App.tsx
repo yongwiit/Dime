@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useStore, newTxn } from './store';
+import { useStore, newTxn, storageContext, CONTEXT_TH, DB_INFO } from './store';
+import { ImportHoldings } from './onboarding';
 import { computePortfolio } from './engine';
 import type { Txn } from './types';
 import { Dashboard, Holdings, Transactions } from './views';
@@ -17,7 +18,10 @@ const TABS: { id: string; label: string; icon: ReactNode }[] = [
 const TITLES: Record<string, string> = { dash: 'พอร์ต Dime US', holdings: 'หุ้นที่ถือ', txns: 'รายการธุรกรรม', assistant: 'ผู้ช่วยพอร์ต', more: 'วิจัย • รายงาน • ตั้งค่า' };
 
 export default function App() {
-  const { data, update, error } = useStore();
+  const { data, update, error, status, persisted, retry, dismissLost, resetAfterConsent } = useStore();
+  const [importing, setImporting] = useState(false);
+  const [moreSec, setMoreSec] = useState<string | undefined>();
+  const context = CONTEXT_TH[storageContext()];
   const [tab, setTab] = useState('dash');
   const [txnStatus, setTxnStatus] = useState<string | undefined>();
   const [form, setForm] = useState<{ t: Partial<Txn>; title: string; onSaved?: () => void } | null>(null);
@@ -44,11 +48,14 @@ export default function App() {
   }, [data?.settings.theme]);
 
   const p = useMemo(() => (data ? computePortfolio(data.fx.rate > 0 ? data : { ...data, fx: { ...data.fx, rate: 1 } }) : null), [data]);
-  if (!data || !p) return <div className="splash">กำลังโหลด…</div>;
+  if (status.kind === 'unreadable') return <Unreadable reason={status.reason} raw={status.raw} retry={retry} reset={resetAfterConsent} context={context} />;
+  if (!data || !p) return <div className="splash">กำลังโหลดข้อมูลจากเครื่อง…</div>;
 
   const go = (t: string) => {
     const [id, st] = t.split(':');
-    setTxnStatus(st); setTab(id); window.scrollTo(0, 0);
+    if (id === 'txns') setTxnStatus(st);
+    if (id === 'more') setMoreSec(st);
+    setTab(id); window.scrollTo(0, 0);
   };
   const openTxn = (t: Partial<Txn>, title = 'รายการ', onSaved?: () => void) => setForm({ t, title, onSaved });
   const saveTxn = (t: Partial<Txn>) => {
@@ -61,7 +68,8 @@ export default function App() {
     form?.onSaved?.();
     setForm(null);
   };
-  const ctx = { data, p, update, openTxn, confirm: setConfirmReq, go };
+  const storage = { context, persisted, db: DB_INFO };
+  const ctx = { data, p, update, openTxn, confirm: setConfirmReq, go, openImport: () => setImporting(true), context, storage };
 
   return (
     <div className="app">
@@ -70,12 +78,21 @@ export default function App() {
         {!online && <span className="tag warn-tag">ออฟไลน์</span>}
       </header>
       {error && <div className="alert">{error}</div>}
+      {status.kind === 'ok' && status.lostSuspected && (
+        <div className="alert">
+          <b>ไม่พบข้อมูลเดิมในหน้าต่างนี้</b> — ครั้งล่าสุด ({new Date(status.lostSuspected.savedAt).toLocaleString('th-TH')}) หน้าต่างนี้เคยบันทึกไว้ {status.lostSuspected.count} รายการ ข้อมูลอาจถูกล้างโดย iOS หรือการตั้งค่า Safari ระบบจึงไม่ได้สร้างข้อมูลใหม่ทับ
+          <div className="row gap wrap" style={{ marginTop: 8 }}>
+            <button className="btn small primary" onClick={() => go('more:settings')}>กู้คืนจากไฟล์สำรอง</button>
+            <button className="btn small ghost" onClick={dismissLost}>เริ่มใช้ต่อแบบว่าง</button>
+          </div>
+        </div>
+      )}
       <main>
         {tab === 'dash' && <Dashboard {...ctx} />}
         {tab === 'holdings' && <Holdings {...ctx} />}
         {tab === 'txns' && <Transactions key={txnStatus ?? 'all'} {...ctx} initialStatus={txnStatus} />}
         {tab === 'assistant' && <Assistant {...ctx} />}
-        {tab === 'more' && <More {...ctx} />}
+        {tab === 'more' && <More key={moreSec ?? 'm'} {...ctx} initialSection={moreSec} />}
       </main>
       <nav className="tabbar" aria-label="เมนูหลัก">
         {TABS.map(t => (
@@ -85,7 +102,32 @@ export default function App() {
         ))}
       </nav>
       {form && <TxnForm initial={form.t} data={data} title={form.title} onSave={saveTxn} onCancel={() => setForm(null)} />}
+      {importing && <ImportHoldings data={data} p={p} update={update} onClose={() => setImporting(false)} />}
       {confirmReq && <Confirm req={confirmReq} onClose={() => setConfirmReq(null)} />}
     </div>
+  );
+}
+
+function Unreadable({ reason, raw, retry, reset, context }: { reason: string; raw?: unknown; retry: () => void; reset: () => Promise<void>; context: string }) {
+  const [sure, setSure] = useState(false);
+  const save = () => {
+    const blob = new Blob([JSON.stringify(raw ?? null, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `dime-unreadable-${Date.now()}.json`; a.click();
+  };
+  return (
+    <div className="app"><div className="page" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 24px)' }}>
+      <section className="card">
+        <h3>อ่านข้อมูลพอร์ตในเครื่องไม่ได้</h3>
+        <p className="small">{reason}</p>
+        <p className="small">ระบบ<b>ยังไม่ได้แก้ไขหรือลบ</b>ข้อมูลเดิม และจะไม่บันทึกอะไรจนกว่าคุณจะเลือก ({context})</p>
+        <div className="row gap wrap">
+          <button className="btn primary" onClick={retry}>ลองอ่านอีกครั้ง</button>
+          {raw !== undefined && <button className="btn" onClick={save}>ดาวน์โหลดข้อมูลดิบไว้ก่อน</button>}
+        </div>
+        <hr />
+        <label className="small row gap"><input type="checkbox" style={{ width: 'auto' }} checked={sure} onChange={e => setSure(e.target.checked)} /> ฉันเข้าใจว่าการเริ่มใหม่จะแทนที่ข้อมูลที่อ่านไม่ได้นี้</label>
+        <button className="btn danger small" disabled={!sure} onClick={() => reset()}>เริ่มฐานข้อมูลใหม่</button>
+      </section>
+    </div></div>
   );
 }

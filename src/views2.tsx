@@ -16,6 +16,7 @@ type Ctx = {
   openTxn: (t: Partial<Txn>, title?: string, onSaved?: () => void) => void;
   confirm: (r: ConfirmReq) => void;
   go: (tab: string) => void;
+  storage?: { context: string; persisted: boolean | null; db: { database: string; objectStore: string; idbVersion: number; key: string; schemaVersion: number } };
 };
 
 interface Msg { id: string; role: 'user' | 'bot'; text?: string; proposal?: ParseResult; state?: 'open' | 'saved' | 'discarded' }
@@ -101,8 +102,8 @@ function Proposal({ m, data, onSave, onDiscard, onEdit }: { m: Msg; data: AppDat
   );
 }
 
-export function More({ go, ...ctx }: Ctx) {
-  const [sec, setSec] = useState<'research' | 'reports' | 'settings'>('research');
+export function More({ go, initialSection, ...ctx }: Ctx & { initialSection?: string }) {
+  const [sec, setSec] = useState<'research' | 'reports' | 'settings'>(initialSection === 'settings' || initialSection === 'reports' ? initialSection : 'research');
   return (
     <div className="page">
       <div className="seg full">
@@ -216,7 +217,7 @@ function Reports({ data, p }: Ctx) {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-function SettingsView({ data, p, update, confirm }: Ctx) {
+function SettingsView({ data, p, update, confirm, storage }: Ctx) {
   const [fx, setFx] = useState(data.fx.rate > 0 ? String(data.fx.rate) : '');
   const [key, setKey] = useState(data.settings.finnhubKey ?? '');
   const [msg, setMsg] = useState('');
@@ -311,7 +312,9 @@ function SettingsView({ data, p, update, confirm }: Ctx) {
       </section>
       <section className="card form">
         <h3>ข้อมูลระบบ</h3>
-        <p className="tiny muted">รายการ {data.txns.length} • หุ้น {p.positions.length} • ประวัติ {data.snapshots.length} วัน • เวอร์ชัน {__APP_VERSION__}</p>
+        <p className="tiny muted">รายการ {data.txns.length} (สำเร็จ {data.txns.filter(t => t.status === 'EXECUTED').length} • รอ {p.pending.length} • ยกเลิก {p.cancelled.length}) • หุ้นที่ถือ {p.positions.length} • ประวัติ {data.snapshots.length} วัน • เวอร์ชัน {__APP_VERSION__}</p>
+        {storage && <p className="tiny muted">ที่เก็บข้อมูล: IndexedDB “{storage.db.database}” / store “{storage.db.objectStore}” / key “{storage.db.key}” • schema v{storage.db.schemaVersion} • เปิดจาก: {storage.context} • ป้องกันการล้างอัตโนมัติ: {storage.persisted === null ? 'ไม่ทราบ' : storage.persisted ? 'เปิด' : 'ไม่ได้รับอนุญาต'}</p>}
+        <p className="tiny">บน iPhone ข้อมูลของ <b>Safari</b>, <b>แอปบนหน้าจอโฮม</b> และ<b>เบราว์เซอร์ในแอปอื่น</b> (เช่น LINE) แยกกันโดย iOS — ให้ใช้จากไอคอนหน้าจอโฮมเป็นหลัก หากต้องการย้ายข้อมูล ให้สำรอง JSON จากที่เดิมแล้วกู้คืนในที่ใหม่</p>
         <button className="btn small danger" onClick={() => confirm({ title: 'ล้างข้อมูลทั้งหมด?', danger: true, ok: 'ล้างข้อมูล', body: <p>ลบทุกรายการในเครื่องนี้ ย้อนกลับไม่ได้ — โปรดสำรองข้อมูลก่อน</p>, onOk: () => update(d => ({ ...d, txns: [], prices: {}, snapshots: [], meta: {} })) })}>ล้างข้อมูลทั้งหมด</button>
       </section>
     </>

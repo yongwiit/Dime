@@ -3,6 +3,7 @@ import type { AppData, Txn, TickerMeta } from './types';
 import type { Portfolio, Position } from './engine';
 import { fmtTHB, fmtUSD, fmtPct, fmtQty, fmtDate, fmtMoney, tone, TYPE_TH, STATUS_TH } from './format';
 import { Donut, LineChart, Bars, Sheet, type ConfirmReq } from './ui';
+import { Onboarding } from './onboarding';
 
 type Ctx = {
   data: AppData; p: Portfolio;
@@ -10,9 +11,11 @@ type Ctx = {
   openTxn: (t: Partial<Txn>, title?: string) => void;
   confirm: (r: ConfirmReq) => void;
   go: (tab: string) => void;
+  openImport: () => void;
+  context: string;
 };
 
-export function Dashboard({ data, p, go, openTxn }: Ctx) {
+export function Dashboard({ data, p, go, openTxn, openImport, context }: Ctx) {
   const [cur, setCur] = useState<'THB' | 'USD'>('THB');
   const v = (thb: number, s?: boolean) => cur === 'THB' ? fmtTHB(thb, s) : fmtUSD(data.fx.rate > 0 ? thb / data.fx.rate : 0, s);
   const sectors = useMemo(() => {
@@ -25,6 +28,8 @@ export function Dashboard({ data, p, go, openTxn }: Ctx) {
   return (
     <div className="page">
       {noFx && <div className="alert">ยังไม่มีอัตราแลกเปลี่ยน USD/THB — ไปที่ <button className="link" onClick={() => go('more')}>ตั้งค่า</button> เพื่อดึงอัตราล่าสุดหรือกรอกเอง</div>}
+      {p.positions.length === 0 && Math.abs(p.cashTotalTHB) < 0.005 && <Onboarding p={p} context={context} onImport={openImport} onAdd={() => openTxn({ type: 'BUY' }, 'บันทึกการซื้อ')} onPending={() => go('txns:PENDING')} onCsv={() => go('more:settings')} />}
+      {(p.positions.length > 0 || Math.abs(p.cashTotalTHB) >= 0.005) && <>
       <section className="hero card">
         <div className="row between"><span className="muted">มูลค่าพอร์ตรวม{p.estimated && ' (ประมาณการ)'}</span>
           <div className="seg small">{(['THB', 'USD'] as const).map(c => <button key={c} className={cur === c ? 'on' : ''} onClick={() => setCur(c)}>{c}</button>)}</div></div>
@@ -47,6 +52,8 @@ export function Dashboard({ data, p, go, openTxn }: Ctx) {
         <div><span>ค่าธรรมเนียมรวม</span><b>{v(p.feesTHB)}</b></div>
       </section>
 
+      </>}
+
       <section className="card">
         <div className="row between"><h3>สถานะคำสั่ง</h3></div>
         <div className="status3">
@@ -57,25 +64,19 @@ export function Dashboard({ data, p, go, openTxn }: Ctx) {
         {p.pending.length > 0 && <p className="hint">คำสั่งรอดำเนินการไม่ถูกนับรวมในมูลค่าพอร์ต หุ้นที่ถือ หรือเงินสด</p>}
       </section>
 
-      {p.positions.length === 0 ? (
-        <section className="card empty">
-          <p>ยังไม่มีหุ้นที่ซื้อสำเร็จ</p>
-          <button className="btn primary" onClick={() => openTxn({ type: 'BUY' }, 'บันทึกการซื้อ')}>บันทึกการซื้อแรก</button>
-          <p className="muted small">หรือนำเข้า CSV / พิมพ์คำสั่งในหน้า ผู้ช่วย</p>
-        </section>
-      ) : <>
+      {p.positions.length > 0 && <>
         <section className="card"><h3>สัดส่วนตามหุ้น</h3>
           <Donut items={p.positions.map(x => ({ label: x.ticker, value: x.marketValueTHB }))} center={<><b>{p.positions.length}</b><span>ตัว</span></>} />
         </section>
         <section className="card"><h3>สัดส่วนตามกลุ่ม</h3><Bars items={sectors} /></section>
       </>}
 
-      <section className="card"><h3>ผลการดำเนินงาน</h3>
+      {p.positions.length > 0 && <section className="card"><h3>ผลการดำเนินงาน</h3>
         <LineChart labels={snaps.map(s => s.date)} series={[
           { name: 'มูลค่าหุ้น (฿)', values: snaps.map(s => s.holdingsTHB), color: '#4f8cff' },
           { name: 'ต้นทุน (฿)', values: snaps.map(s => s.investedTHB), color: '#8a94a6', dashed: true },
         ]} />
-      </section>
+      </section>}
 
       {p.warnings.length > 0 && <section className="card warn"><h3>ข้อควรตรวจสอบ</h3><ul>{p.warnings.map(w => <li key={w}>{w}</li>)}</ul></section>}
     </div>
@@ -86,7 +87,7 @@ function Kpi({ label, value, sub, t }: { label: string; value: string; sub?: str
   return <div className="kpi"><span>{label}</span><b className={tone(t)}>{value}</b>{sub && <small className={tone(t)}>{sub}</small>}</div>;
 }
 
-export function Holdings({ data, p, update, openTxn, confirm }: Ctx) {
+export function Holdings({ data, p, update, openTxn, confirm, openImport }: Ctx) {
   const [edit, setEdit] = useState<Position | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   const list = showClosed ? p.closed : p.positions;
@@ -97,9 +98,9 @@ export function Holdings({ data, p, update, openTxn, confirm }: Ctx) {
           <button className={!showClosed ? 'on' : ''} onClick={() => setShowClosed(false)}>ถืออยู่ ({p.positions.length})</button>
           <button className={showClosed ? 'on' : ''} onClick={() => setShowClosed(true)}>ขายหมดแล้ว ({p.closed.length})</button>
         </div>
-        <button className="btn primary small" onClick={() => openTxn({ type: 'BUY' }, 'เพิ่มหุ้น / บันทึกการซื้อ')}>+ เพิ่ม</button>
+        <div className="row gap"><button className="btn small" onClick={openImport}>นำเข้ายอด</button><button className="btn primary small" onClick={() => openTxn({ type: 'BUY' }, 'เพิ่มหุ้น / บันทึกการซื้อ')}>+ เพิ่ม</button></div>
       </div>
-      {list.length === 0 && <div className="card empty">ไม่มีรายการ{p.pending.length > 0 && !showClosed && ` • มีคำสั่งรอดำเนินการ ${p.pending.length} รายการ (ดูในหน้า รายการ)`}</div>}
+      {list.length === 0 && <div className="card empty">{showClosed ? 'ไม่มีรายการ' : <>ยังไม่มีหุ้นที่บันทึกว่าซื้อสำเร็จ{p.pending.length > 0 && ` • มีคำสั่งรอดำเนินการ ${p.pending.length} รายการ (ยังไม่นับเป็นหุ้นที่ถือ)`}<button className="btn primary small" onClick={openImport}>นำเข้ายอดหุ้นที่ถืออยู่</button></>}</div>}
       {list.map(x => (
         <article key={x.ticker} className="card holding" onClick={() => setEdit(x)}>
           <div className="row between">

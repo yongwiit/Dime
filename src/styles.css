@@ -157,3 +157,9 @@ th:first-child, td:first-child { text-align: left; } th { color: var(--muted); f
 
 @media (min-width: 700px) { .hgrid { grid-template-columns: repeat(6, 1fr); } .kpis { grid-template-columns: repeat(4, 1fr); } .grid-kv { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 360px) { .donut-wrap { grid-template-columns: 1fr; justify-items: center; } .donut-center { left: 50%; transform: translateX(-50%); } }
+
+.onboarding { display: flex; flex-direction: column; gap: 8px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.onboarding p { margin: 0; }
+.onb-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.import-row { border: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; margin: 0; }
+.import-row legend { font-size: 13px; color: var(--muted); padding: 0 4px; }
