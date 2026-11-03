@@ -44,7 +44,7 @@ function analyze(d: AppData, p: Portfolio) {
   const losers = p.positions.filter(x => x.hasPrice && x.unrealizedPct <= -d.settings.maxStockLossPct);
   const lines = [
     `📊 ภาพรวมพอร์ต`,
-    `มูลค่ารวม ${fmtTHB(p.totalValueTHB)} (หุ้น ${fmtTHB(p.holdingsValueTHB)} + เงินสด ${fmtTHB(p.cashTotalTHB)})`,
+    p.cashTracked ? `มูลค่ารวม ${fmtTHB(p.totalValueTHB)} (หุ้น ${fmtTHB(p.holdingsValueTHB)} + เงินสด ${fmtTHB(p.cashTotalTHB)})` : `มูลค่าหุ้น ${fmtTHB(p.holdingsValueTHB)} (ยังไม่ได้บันทึกเงินฝาก จึงไม่นับเงินสด)`,
     `ต้นทุนหุ้นที่ถือ ${fmtTHB(p.investedTHB)} • กำไร/ขาดทุนยังไม่รับรู้ ${fmtTHB(p.unrealizedTHB, true)} (${fmtPct(p.unrealizedPct, true)})`,
     `กำไรที่รับรู้แล้ว ${fmtTHB(p.realizedTHB, true)} • ปันผลสุทธิ ${fmtTHB(p.dividendsTHB)}`,
     ...p.positions.map(x => `• ${x.ticker} ${fmtPct(x.weight)} — ${x.hasPrice ? `${fmtTHB(x.unrealizedTHB, true)} (${fmtPct(x.unrealizedPct, true)})` : 'ยังไม่มีราคาตลาด (ใช้ต้นทุนแทน)'}`),

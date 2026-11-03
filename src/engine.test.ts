@@ -202,3 +202,33 @@ describe('csv', () => {
     expect(back.txns[0]).toMatchObject({ ticker: 'AAPL', quantity: 1.5, price: 100, amount: 150, fxRate: 35, notes: 'a, "b"' });
   });
 });
+
+describe('Dime order-history import (3 Nov 2026 rows)', () => {
+  const ROWS: [string, number, number, number][] = [
+    ['GOOGL', 0.0236388, 280.47, 224.76], ['SGOV', 0.0660161, 100.43, 224.76],
+    ['QQQM', 0.0314253, 281.62, 299.91], ['VOO', 0.0320086, 692.0, 749.78],
+  ];
+  it('derives FX = THB paid ÷ (quantity × USD price) without rounding', async () => {
+    const { deriveImport } = await import('./onboarding');
+    const d = deriveImport({ quantity: '0.0236388', priceUSD: '280.47', paid: '224.76', payCur: 'THB', fxRate: '' });
+    expect(d.usd).toBeCloseTo(6.629974236, 12);
+    expect(d.fx).toBeCloseTo(224.76 / (0.0236388 * 280.47), 12);
+    expect(d.fx.toFixed(4)).toBe('33.9006');
+  });
+  it('stores exact THB and USD cost at purchase FX; quantity and price unrounded', () => {
+    const txns = ROWS.map(([tk, q, pu, thb], i) => tx({ id: 'p' + i, ticker: tk, quantity: q, price: thb / q, priceUSD: pu, amount: thb, currency: 'THB', fxRate: thb / (q * pu), datetime: '2026-11-03T09:00' }));
+    const p = computePortfolio(data(txns, {}, 33.87));
+    for (const [tk, q, pu, thb] of ROWS) {
+      const x = p.positions.find(y => y.ticker === tk)!;
+      expect(x.quantity).toBe(q);
+      expect(x.costTHB).toBe(thb);
+      expect(Math.abs(x.costUSD - q * pu)).toBeLessThan(1e-12);
+      expect(Math.abs(x.avgCostUSD - pu)).toBeLessThan(1e-9);
+    }
+    expect(p.investedTHB).toBeCloseTo(1499.21, 10);
+    expect(p.investedUSD).toBeCloseTo(6.629974236 + 6.629996923 + 8.849992986 + 22.1499512, 9);
+    expect(p.cashTracked).toBe(false);
+    expect(p.totalValueTHB).toBeCloseTo(p.holdingsValueTHB, 10); // no deposits recorded → cash not counted
+    expect(p.warnings.filter(w => w.includes('ติดลบ'))).toEqual([]);
+  });
+});

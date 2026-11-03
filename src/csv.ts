@@ -1,7 +1,7 @@
 import type { Txn, TxnStatus, TxnType, Currency } from './types';
 import { validateTxn } from './engine';
 
-export const CSV_COLUMNS = ['datetime', 'type', 'status', 'ticker', 'quantity', 'price', 'amount', 'currency', 'fxRate', 'fees', 'notes', 'id'] as const;
+export const CSV_COLUMNS = ['datetime', 'type', 'status', 'ticker', 'quantity', 'price', 'priceUSD', 'amount', 'currency', 'fxRate', 'fees', 'notes', 'id'] as const;
 
 const esc = (v: unknown) => {
   const s = v === undefined || v === null ? '' : String(v);
@@ -63,7 +63,7 @@ export function csvToTxns(text: string): { txns: Txn[]; errors: string[] } {
       type: (TYPE_ALIASES[rawType.toLowerCase()] ?? rawType.toUpperCase()) as TxnType,
       status: (rawStatus ? STATUS_ALIASES[rawStatus.toLowerCase()] ?? rawStatus.toUpperCase() : 'EXECUTED') as TxnStatus,
       ticker: g('ticker').toUpperCase() || undefined,
-      quantity: n('quantity'), price: n('price'), amount: n('amount') ?? 0,
+      quantity: n('quantity'), price: n('price'), priceUSD: n('priceUSD'), amount: n('amount') ?? 0,
       currency: g('currency').toUpperCase() as Currency,
       fxRate: n('fxRate'), fees: n('fees') ?? 0, notes: g('notes') || undefined,
       source: 'import', createdAt: now, updatedAt: now,
@@ -72,7 +72,7 @@ export function csvToTxns(text: string): { txns: Txn[]; errors: string[] } {
     if (!['BUY', 'SELL', 'DIVIDEND', 'DEPOSIT', 'WITHDRAWAL', 'FEE', 'ADJUSTMENT'].includes(t.type)) bad.push('ประเภทไม่ถูกต้อง');
     if (!['EXECUTED', 'PENDING', 'CANCELLED'].includes(t.status)) bad.push('สถานะไม่ถูกต้อง');
     if (!['USD', 'THB'].includes(t.currency)) bad.push('สกุลเงินต้องเป็น USD หรือ THB');
-    for (const k of ['quantity', 'price', 'amount', 'fxRate', 'fees'] as const) if (t[k] !== undefined && isNaN(t[k] as number)) bad.push(`${k} ไม่ใช่ตัวเลข`);
+    for (const k of ['quantity', 'price', 'priceUSD', 'amount', 'fxRate', 'fees'] as const) if (t[k] !== undefined && isNaN(t[k] as number)) bad.push(`${k} ไม่ใช่ตัวเลข`);
     if (bad.length) errors.push(`แถว ${i + 2}: ${[...new Set(bad)].join(', ')}`);
     else txns.push(t);
   });

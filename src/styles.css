@@ -163,3 +163,4 @@ th:first-child, td:first-child { text-align: left; } th { color: var(--muted); f
 .onb-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .import-row { border: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; margin: 0; }
 .import-row legend { font-size: 13px; color: var(--muted); padding: 0 4px; }
+.review-card { margin: 0; }

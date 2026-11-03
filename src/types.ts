@@ -11,6 +11,7 @@ export interface Txn {
   ticker?: string;
   quantity?: number;
   price?: number; // per share, in `currency`
+  priceUSD?: number; // per-share price in USD as shown by the broker (kept for THB-settled trades; audit/display only)
   amount: number; // gross amount in `currency` (BUY: cost before fees; SELL: proceeds before fees; ADJUSTMENT: signed)
   currency: Currency;
   fxRate?: number; // THB per 1 USD at the time of the transaction
