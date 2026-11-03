@@ -11,7 +11,7 @@ import { fmtMoney, fmtFx, fmtDate } from '../format';
    same validation, same pending-order linking by id, all-or-nothing. Nothing is saved before the last tap. */
 
 interface Pic { id: string; file: File; url: string }
-interface Extracted { picId: string; row: ImportRow; reasons: string[]; band: OcrBox; imgW: number }
+interface Extracted { picId: string; row: ImportRow; reasons: string[]; band: OcrBox; imgW: number; crop?: string }
 interface ImageReport { picId: string; index: number; notices: string[]; ignored: IgnoredRow[]; rows: number; seconds: number }
 
 type Step = 'pick' | 'reading' | 'review' | 'confirm';
@@ -61,7 +61,7 @@ export function ScreenshotImport({ data, update, onClose }: { data: AppData; upd
         const ti = i === 0 ? t0 : performance.now(); // first image includes loading the OCR engine
         const r = await ocr.recognize(p.file, (stage, f) => setProgress({ text: `ภาพ ${i + 1}/${pics.length}: ${stage}`, value: (i + f) / pics.length }));
         const rows = toImportRows(r.parse.rows, `img${i}`).map(x => normaliseLink(data, x));
-        r.parse.rows.forEach((x: ExtractedRow, k) => out.push({ picId: p.id, row: rows[k], reasons: fieldReasons(x), band: x.band, imgW: r.width }));
+        r.parse.rows.forEach((x: ExtractedRow, k) => out.push({ picId: p.id, row: rows[k], reasons: fieldReasons(x), band: x.band, imgW: r.width, crop: r.crops[k] }));
         reps.push({ picId: p.id, index: i + 1, notices: r.parse.notices, ignored: r.parse.ignored, rows: r.parse.rows.length, seconds: (performance.now() - ti) / 1000 });
       }
       await ocr.dispose();
@@ -73,6 +73,8 @@ export function ScreenshotImport({ data, update, onClose }: { data: AppData; upd
   };
 
   const rows = items.map(x => x.row);
+  const rowRefs = useRef<(HTMLFieldSetElement | null)[]>([]);
+  const [attention, setAttention] = useState<number | null>(null);
   const checks = useMemo(() => checkImportRows(data, rows), [data, items]); // eslint-disable-line react-hooks/exhaustive-deps
   const allOk = rows.length > 0 && checks.every(c => c.errors.length === 0);
   const totalTHB = rows.reduce((a, r) => a + (Number(r.paid) || 0), 0);
@@ -93,6 +95,13 @@ export function ScreenshotImport({ data, update, onClose }: { data: AppData; upd
       return { ...x, row: { ...x.row, link: s.id, linkChosen: true } };
     });
   });
+
+  const goSummary = () => {
+    const first = checks.findIndex(c => c.errors.length);
+    if (first < 0) { setAttention(null); setStep('confirm'); return; }
+    setAttention(first);
+    rowRefs.current[first]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const commit = () => {
     try {
@@ -160,28 +169,36 @@ export function ScreenshotImport({ data, update, onClose }: { data: AppData; upd
             const flag = (f: ImportField) => r.unverified?.includes(f);
             const cand = pendingCandidates(data, r);
             const d = deriveImport(r);
+            const id = (f: string) => `${r.key}-${f}`;
+            // The verify button is deliberately outside the <label>: on iOS a tap inside a label focuses the input instead.
             const field = (f: ImportField, label: string, input: React.ReactNode) => (
-              <label className={flag(f) ? 'flag' : ''}>{label}{input}
-                {flag(f) && <span className="row gap"><span className="tiny">ต้องตรวจ</span>{val(r, f) ? <button type="button" className="btn small" onClick={() => confirmField(r.key, f)}>ค่าถูกต้อง</button> : null}</span>}
-              </label>
+              <div className={`field${flag(f) ? ' flag' : ''}`} data-field={f}>
+                <label htmlFor={id(f)}>{label}</label>
+                {input}
+                {flag(f) && <div className="verify">
+                  <span className="tiny">ต้องตรวจกับภาพ</span>
+                  {val(r, f) ? <button type="button" className="btn small" onClick={() => confirmField(r.key, f)}>ค่าถูกต้อง</button> : <span className="tiny">กรุณากรอก/เลือก</span>}
+                </div>}
+              </div>
             );
-            const txt = (f: Exclude<ImportField, 'side'>, mode: 'text' | 'decimal' = 'decimal') => (
-              <input inputMode={mode} value={val(r, f)} onChange={e => setRow(r.key, { [f]: f === 'ticker' ? e.target.value.toUpperCase().trim() : e.target.value.trim() } as Partial<ImportRow>, f)} />
+            const txt = (f: Exclude<ImportField, 'side'>, mode: 'text' | 'decimal' = 'decimal', placeholder?: string) => (
+              <input id={id(f)} inputMode={mode} placeholder={placeholder} autoCapitalize={f === 'ticker' ? 'characters' : 'off'} autoCorrect="off" spellCheck={false} value={val(r, f)}
+                onChange={e => setRow(r.key, { [f]: f === 'ticker' ? e.target.value.toUpperCase().trim() : e.target.value.trim() } as Partial<ImportRow>, f)} />
             );
             return (
-              <fieldset key={r.key} className="card import-row" data-testid="ocr-row">
+              <fieldset key={r.key} ref={el => { rowRefs.current[i] = el; }} className={`card import-row${attention === i ? ' attention' : ''}`} data-testid="ocr-row">
                 <legend>รายการ {i + 1}</legend>
-                {pic && <RowCrop url={pic.url} band={x.band} imgW={x.imgW} />}
+                {x.crop ? <img className="row-crop-img" src={x.crop} alt={`ส่วนของภาพที่อ่านรายการ ${i + 1}`} /> : pic && <RowCrop url={pic.url} band={x.band} imgW={x.imgW} />}
                 <div className="grid2">
-                  {field('side', 'ประเภท', <select value={r.side ?? ''} onChange={e => setRow(r.key, { side: (e.target.value || undefined) as ImportRow['side'], link: '' }, 'side')}>
+                  {field('side', 'ประเภท', <select id={id('side')} value={r.side ?? ''} onChange={e => setRow(r.key, { side: (e.target.value || undefined) as ImportRow['side'], link: '' }, 'side')}>
                     <option value="">— เลือก —</option><option value="BUY">ซื้อ</option><option value="SELL">ขาย</option></select>)}
                   {field('ticker', 'ชื่อหุ้น', txt('ticker', 'text'))}
                   {field('quantity', 'จำนวนหุ้น', txt('quantity'))}
                   {field('priceUSD', 'ราคาที่ได้จริง (USD)', txt('priceUSD'))}
                   {field('paid', r.side === 'SELL' ? 'ยอดที่ได้รับ (THB)' : 'ยอดที่จ่าย (THB)', txt('paid'))}
-                  <label>FX ที่คำนวณได้<input readOnly tabIndex={-1} value={d.fx > 0 ? fmtFx(d.fx) : ''} /></label>
-                  {field('date', 'วันที่', <input type="date" value={r.date} onChange={e => setRow(r.key, { date: e.target.value }, 'date')} />)}
-                  {field('time', 'เวลา', <input type="time" step={1} value={r.time} onChange={e => setRow(r.key, { time: e.target.value }, 'time')} />)}
+                  <div className="field"><label htmlFor={id('fx')}>FX ที่คำนวณได้</label><input id={id('fx')} readOnly tabIndex={-1} value={d.fx > 0 ? fmtFx(d.fx) : ''} /></div>
+                  {field('date', 'วันที่', <input id={id('date')} type="date" value={r.date} onChange={e => setRow(r.key, { date: e.target.value }, 'date')} />)}
+                  {field('time', 'เวลา (ชม:นาที:วินาที)', txt('time', 'text', '17:05:09'))}
                 </div>
                 {cand.length > 0 && (
                   <label>มีคำสั่งรอดำเนินการของ {r.ticker} — รายการนี้คือ:
@@ -204,10 +221,11 @@ export function ScreenshotImport({ data, update, onClose }: { data: AppData; upd
             );
           })}
           <div className="sticky-actions">
+            {!allOk && rows.length > 0 && <div className="hint" data-testid="pending-issues">ยังต้องแก้ไขหรือยืนยันอีก {checks.filter(c => c.errors.length).length} รายการ — กดปุ่มด้านล่างเพื่อไปยังรายการที่ต้องแก้</div>}
             <div className="tiny muted">{rows.length} รายการ • รวม {fmtMoney(totalTHB, 'THB')} • ไม่พบค่าธรรมเนียมแยกในภาพ จึงไม่บันทึกค่าธรรมเนียม (ยอดบาทคือยอดที่ Dime แสดง)</div>
             <div className="row gap">
               <button className="btn ghost grow" onClick={() => setStep('pick')}>กลับไปเลือกภาพ</button>
-              <button className="btn primary grow" disabled={!allOk} onClick={() => setStep('confirm')}>ตรวจสอบสรุปก่อนนำเข้า</button>
+              <button className="btn primary grow" data-ready={allOk ? 'yes' : 'no'} disabled={rows.length === 0} onClick={goSummary}>{allOk ? 'ตรวจสอบสรุปก่อนนำเข้า' : 'ไปยังรายการที่ต้องแก้'}</button>
             </div>
           </div>
         </div>

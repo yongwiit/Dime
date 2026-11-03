@@ -179,3 +179,15 @@ th:first-child, td:first-child { text-align: left; } th { color: var(--muted); f
 .import-row { min-width: 0; }
 .import-row .grid2, .form .grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .import-row input, .import-row select { min-width: 0; }
+
+/* review fields: label, control and verify controls as siblings (no button inside a label) */
+.import-row .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 13px; color: var(--muted); }
+.import-row .field > label { color: inherit; }
+.import-row .field.flag { color: var(--warn); }
+.import-row .field.flag > input, .import-row .field.flag > select { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
+.import-row .verify { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.import-row.attention { border-color: var(--warn); box-shadow: 0 0 0 2px var(--warn); }
+.row-crop-img { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
+/* iOS Safari gives date/time inputs an intrinsic minimum width and centred text; make them fit the grid cell */
+input[type='date'], input[type='time'] { -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 0; max-width: 100%; min-height: 44px; text-align: left; }
+input[type='date']::-webkit-date-and-time-value, input[type='time']::-webkit-date-and-time-value { text-align: left; }

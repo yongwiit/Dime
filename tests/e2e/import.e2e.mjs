@@ -3,7 +3,7 @@
 // IndexedDB directly to verify what was stored, reloads, and checks Dashboard and Holdings.
 //   npm run test:e2e            (uses Playwright's Chromium; CI installs it)
 //   CHROME_PATH=/usr/bin/google-chrome npm run test:e2e
-import { chromium, devices } from 'playwright';
+import { chromium, webkit, devices } from 'playwright';
 import { spawn } from 'node:child_process';
 
 const PORT = 4179;
@@ -26,7 +26,10 @@ for (let i = 0; i < 60; i++) {
   await new Promise(r => setTimeout(r, 500));
 }
 
-const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH, args: ['--no-sandbox'] } : {});
+// BROWSER=webkit runs the same test in WebKit (Safari's engine); default Chromium. CHROME_PATH: local Chrome binary.
+const ENGINE = process.env.BROWSER === 'webkit' ? webkit : chromium;
+console.log(`engine: ${process.env.BROWSER === 'webkit' ? 'webkit' : 'chromium'}`);
+const browser = await ENGINE.launch(ENGINE === chromium && process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH, args: ['--no-sandbox'] } : {});
 const ctx = await browser.newContext({ ...devices['iPhone 13'], locale: 'th-TH', timezoneId: 'Asia/Bangkok' });
 await ctx.route(/frankfurter|fonts\.g|finnhub/, r => r.abort()); // deterministic: no network data
 const errors = [];

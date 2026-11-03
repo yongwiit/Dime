@@ -11,7 +11,7 @@ const options = (logger?: (m: { status: string; progress: number }) => void) => 
   gzip: true, workerBlobURL: false, logger,
 });
 
-export interface ImageResult { parse: ParseResult; width: number; height: number; preview: string }
+export interface ImageResult { parse: ParseResult; width: number; height: number; crops: string[] }
 export type Progress = (stage: string, fraction: number) => void;
 
 async function loadCanvas(file: Blob) {
@@ -24,6 +24,19 @@ async function loadCanvas(file: Blob) {
   return { c, ctx };
 }
 
+/** Full-width strip of the screenshot around a row, scaled to at most 720 px wide, as a small JPEG. */
+function cropRow(src: HTMLCanvasElement, y0: number, y1: number): string {
+  const pad = Math.round((y1 - y0) * 0.12) + 16;
+  const top = Math.max(0, y0 - pad), bottom = Math.min(src.height, y1 + pad);
+  const scale = Math.min(1, 720 / src.width);
+  const c = document.createElement('canvas');
+  c.width = Math.round(src.width * scale); c.height = Math.max(1, Math.round((bottom - top) * scale));
+  c.getContext('2d')!.drawImage(src, 0, top, src.width, bottom - top, 0, 0, c.width, c.height);
+  const url = c.toDataURL('image/jpeg', 0.8);
+  c.width = c.height = 0;
+  return url;
+}
+
 export class DimeOcr {
   private tha?: Worker;
   private eng?: Worker;
@@ -34,7 +47,10 @@ export class DimeOcr {
   async recognize(file: Blob, onProgress?: Progress): Promise<ImageResult> {
     this.onProgress = onProgress;
     const { c, ctx } = await loadCanvas(file);
-    const preview = c.toDataURL('image/jpeg', 0.7);
+    // keep an untouched copy to cut per-row thumbnails from (the OCR copy is converted to grayscale/inverted)
+    const orig = document.createElement('canvas');
+    orig.width = c.width; orig.height = c.height;
+    orig.getContext('2d')!.drawImage(c, 0, 0);
     const img = ctx.getImageData(0, 0, c.width, c.height);
     toOcrGrayscale(img.data);
     ctx.putImageData(img, 0, 0);
@@ -44,7 +60,11 @@ export class DimeOcr {
     this.eng ??= await createWorker(['eng'], 1, options(this.log));
     this.stage = 'อ่านชื่อหุ้นและตรวจตัวเลขซ้ำ';
     const e = await this.eng.recognize(c, {}, { text: true, blocks: true });
-    return { parse: parseDimeScreenshot(toPass(t.data as never), toPass(e.data as never)), width: c.width, height: c.height, preview };
+    const parse = parseDimeScreenshot(toPass(t.data as never), toPass(e.data as never));
+    const crops = parse.rows.map(r => cropRow(orig, r.band.y0, r.band.y1));
+    const out = { parse, width: c.width, height: c.height, crops };
+    c.width = c.height = orig.width = orig.height = 0; // release canvas memory early (iOS limits total canvas memory)
+    return out;
   }
 
   async dispose() { await this.tha?.terminate(); await this.eng?.terminate(); this.tha = this.eng = undefined; }
