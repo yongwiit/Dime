@@ -12,10 +12,11 @@ type Ctx = {
   confirm: (r: ConfirmReq) => void;
   go: (tab: string) => void;
   openImport: () => void;
+  openScreenshot: () => void;
   context: string;
 };
 
-export function Dashboard({ data, p, go, openTxn, openImport, context }: Ctx) {
+export function Dashboard({ data, p, go, openTxn, openImport, openScreenshot, context }: Ctx) {
   const [cur, setCur] = useState<'THB' | 'USD'>('THB');
   const v = (thb: number, s?: boolean) => cur === 'THB' ? fmtTHB(thb, s) : fmtUSD(data.fx.rate > 0 ? thb / data.fx.rate : 0, s);
   const sectors = useMemo(() => {
@@ -28,7 +29,7 @@ export function Dashboard({ data, p, go, openTxn, openImport, context }: Ctx) {
   return (
     <div className="page">
       {noFx && <div className="alert">ยังไม่มีอัตราแลกเปลี่ยน USD/THB — ไปที่ <button className="link" onClick={() => go('more')}>ตั้งค่า</button> เพื่อดึงอัตราล่าสุดหรือกรอกเอง</div>}
-      {p.positions.length === 0 && Math.abs(p.cashTotalTHB) < 0.005 && <Onboarding p={p} context={context} onImport={openImport} onAdd={() => openTxn({ type: 'BUY' }, 'บันทึกการซื้อ')} onPending={() => go('txns:PENDING')} onCsv={() => go('more:settings')} />}
+      {p.positions.length === 0 && Math.abs(p.cashTotalTHB) < 0.005 && <Onboarding p={p} context={context} onImport={openImport} onScreenshot={openScreenshot} onAdd={() => openTxn({ type: 'BUY' }, 'บันทึกการซื้อ')} onPending={() => go('txns:PENDING')} onCsv={() => go('more:settings')} />}
       {(p.positions.length > 0 || Math.abs(p.cashTotalTHB) >= 0.005) && <>
       <section className="hero card">
         <div className="row between"><span className="muted">{p.cashTracked ? 'มูลค่าพอร์ตรวม' : 'มูลค่าหุ้นรวม'}{p.estimated && ' (ประมาณการ — ยังไม่มีราคาตลาด)'}</span>
@@ -87,7 +88,7 @@ function Kpi({ label, value, sub, t }: { label: string; value: string; sub?: str
   return <div className="kpi"><span>{label}</span><b className={tone(t)}>{value}</b>{sub && <small className={tone(t)}>{sub}</small>}</div>;
 }
 
-export function Holdings({ data, p, update, openTxn, confirm, openImport }: Ctx) {
+export function Holdings({ data, p, update, openTxn, confirm, openImport, openScreenshot }: Ctx) {
   const [edit, setEdit] = useState<Position | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   const list = showClosed ? p.closed : p.positions;
@@ -98,7 +99,7 @@ export function Holdings({ data, p, update, openTxn, confirm, openImport }: Ctx)
           <button className={!showClosed ? 'on' : ''} onClick={() => setShowClosed(false)}>ถืออยู่ ({p.positions.length})</button>
           <button className={showClosed ? 'on' : ''} onClick={() => setShowClosed(true)}>ขายหมดแล้ว ({p.closed.length})</button>
         </div>
-        <div className="row gap"><button className="btn small" onClick={openImport}>นำเข้ายอด</button><button className="btn primary small" onClick={() => openTxn({ type: 'BUY' }, 'เพิ่มหุ้น / บันทึกการซื้อ')}>+ เพิ่ม</button></div>
+        <div className="row gap"><button className="btn small" onClick={openScreenshot}>นำเข้าจากภาพ</button><button className="btn small" onClick={openImport}>นำเข้ายอด</button><button className="btn primary small" onClick={() => openTxn({ type: 'BUY' }, 'เพิ่มหุ้น / บันทึกการซื้อ')}>+ เพิ่ม</button></div>
       </div>
       {list.length === 0 && <div className="card empty">{showClosed ? 'ไม่มีรายการ' : <>ยังไม่มีหุ้นที่บันทึกว่าซื้อสำเร็จ{p.pending.length > 0 && ` • มีคำสั่งรอดำเนินการ ${p.pending.length} รายการ (ยังไม่นับเป็นหุ้นที่ถือ)`}<button className="btn primary small" onClick={openImport}>นำเข้ายอดหุ้นที่ถืออยู่</button></>}</div>}
       {list.map(x => (
@@ -166,7 +167,7 @@ function HoldingEditor({ pos, data, onClose, update, openTxn, confirm }: { pos: 
   );
 }
 
-export function Transactions({ data, update, openTxn, confirm, initialStatus }: Ctx & { initialStatus?: string }) {
+export function Transactions({ data, update, openTxn, confirm, openScreenshot, initialStatus }: Ctx & { initialStatus?: string }) {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState(initialStatus ?? 'ALL');
   const [type, setType] = useState('ALL');
@@ -180,7 +181,7 @@ export function Transactions({ data, update, openTxn, confirm, initialStatus }: 
   }, [data.txns, q, status, type]);
   return (
     <div className="page">
-      <div className="row gap"><input className="search grow" type="search" placeholder="ค้นหา ticker, หมายเหตุ, วันที่…" value={q} onChange={e => setQ(e.target.value)} /><button className="btn primary small" onClick={() => openTxn({}, 'เพิ่มรายการ')}>+ เพิ่ม</button></div>
+      <div className="row gap"><input className="search grow" type="search" placeholder="ค้นหา ticker, หมายเหตุ, วันที่…" value={q} onChange={e => setQ(e.target.value)} /><button className="btn small" onClick={openScreenshot} aria-label="นำเข้าจากภาพ Dime">ภาพ</button><button className="btn primary small" onClick={() => openTxn({}, 'เพิ่มรายการ')}>+ เพิ่ม</button></div>
       <div className="chips">
         {['ALL', 'EXECUTED', 'PENDING', 'CANCELLED'].map(s => <button key={s} className={status === s ? 'on' : ''} onClick={() => setStatus(s)}>{s === 'ALL' ? 'ทุกสถานะ' : STATUS_TH[s]}</button>)}
       </div>

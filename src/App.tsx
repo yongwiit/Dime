@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useStore, newTxn, storageContext, CONTEXT_TH, DB_INFO } from './store';
 import { ImportHoldings } from './onboarding';
+import { ScreenshotImport } from './ocr/ScreenshotImport';
 import { computePortfolio } from './engine';
 import type { Txn } from './types';
 import { Dashboard, Holdings, Transactions } from './views';
@@ -20,6 +21,7 @@ const TITLES: Record<string, string> = { dash: 'พอร์ต Dime US', holdin
 export default function App() {
   const { data, update, error, status, persisted, retry, dismissLost, resetAfterConsent } = useStore();
   const [importing, setImporting] = useState(false);
+  const [shotImport, setShotImport] = useState(false);
   const [moreSec, setMoreSec] = useState<string | undefined>();
   const context = CONTEXT_TH[storageContext()];
   const [tab, setTab] = useState('dash');
@@ -69,7 +71,7 @@ export default function App() {
     setForm(null);
   };
   const storage = { context, persisted, db: DB_INFO };
-  const ctx = { data, p, update, openTxn, confirm: setConfirmReq, go, openImport: () => setImporting(true), context, storage };
+  const ctx = { data, p, update, openTxn, confirm: setConfirmReq, go, openImport: () => setImporting(true), openScreenshot: () => setShotImport(true), context, storage };
 
   return (
     <div className="app">
@@ -102,6 +104,7 @@ export default function App() {
         ))}
       </nav>
       {form && <TxnForm initial={form.t} data={data} title={form.title} onSave={saveTxn} onCancel={() => setForm(null)} />}
+      {shotImport && <ScreenshotImport data={data} update={update} onClose={() => setShotImport(false)} />}
       {importing && <ImportHoldings data={data} p={p} update={update} onClose={() => setImporting(false)} />}
       {confirmReq && <Confirm req={confirmReq} onClose={() => setConfirmReq(null)} />}
     </div>

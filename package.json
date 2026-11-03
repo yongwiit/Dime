@@ -7,7 +7,10 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "node tests/e2e/import.e2e.mjs"
+    "test:e2e": "node tests/e2e/import.e2e.mjs && node tests/e2e/screenshot.e2e.mjs",
+    "predev": "node scripts/copy-ocr-assets.mjs",
+    "prebuild": "node scripts/copy-ocr-assets.mjs",
+    "pretest": "node scripts/copy-ocr-assets.mjs"
   },
   "repository": {
     "type": "git",
@@ -18,15 +21,20 @@
   },
   "homepage": "https://github.com/yongwiit/dime#readme",
   "dependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/tha": "^1.0.0",
     "idb-keyval": "^6.3.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.7.0",
     "playwright": "^1.63.0",
+    "pngjs": "^7.0.0",
     "typescript": "^5.9.3",
     "vite": "^5.4.21",
     "vite-plugin-pwa": "^0.20.5",

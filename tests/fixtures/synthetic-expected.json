@@ -1,0 +1,71 @@
+{
+  "note": "Fully synthetic data. Not from any real account.",
+  "completed": [
+    {
+      "side": "SELL",
+      "ticker": "QRST",
+      "date": "2025-10-21",
+      "time": "15:42:07",
+      "priceUSD": "51.24",
+      "quantity": "0.2000000",
+      "amountTHB": "349.66"
+    },
+    {
+      "side": "BUY",
+      "ticker": "ZYXW",
+      "date": "2025-10-14",
+      "time": "10:05:33",
+      "priceUSD": "152.38",
+      "quantity": "0.1312507",
+      "amountTHB": "684.20"
+    },
+    {
+      "side": "BUY",
+      "ticker": "MNOP",
+      "date": "2025-10-09",
+      "time": "21:30:18",
+      "priceUSD": "9.87",
+      "quantity": "2.5329281",
+      "amountTHB": "851.25"
+    },
+    {
+      "side": "BUY",
+      "ticker": "QRST",
+      "date": "2025-10-09",
+      "time": "21:28:54",
+      "priceUSD": "47.10",
+      "quantity": "0.6369427",
+      "amountTHB": "1021.50"
+    },
+    {
+      "side": "BUY",
+      "ticker": "KLMN",
+      "date": "2025-09-30",
+      "time": "09:41:12",
+      "priceUSD": "233.15",
+      "quantity": "0.0428911",
+      "amountTHB": "339.80"
+    }
+  ],
+  "ignored": {
+    "pending": {
+      "side": "BUY",
+      "ticker": "PNDG",
+      "date": "2025-10-22",
+      "time": "11:02:45",
+      "priceUSD": "88.40",
+      "quantity": "0.3393665",
+      "amountTHB": "1023.00"
+    },
+    "cancelled": {
+      "side": "BUY",
+      "ticker": "CNCL",
+      "date": "2025-10-03",
+      "time": "14:17:50",
+      "priceUSD": "61.75",
+      "quantity": "0.4858300",
+      "amountTHB": "1020.00"
+    }
+  },
+  "totalTHB": "3246.41"
+}

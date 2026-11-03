@@ -32,8 +32,11 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+        // OCR engine (~11 MB) is not part of app start-up; it is cached the first time screenshot import is used
+        globIgnores: ['tesseract/**'],
         navigateFallback: base + 'index.html',
         runtimeCaching: [
+          { urlPattern: /\/tesseract\//, handler: 'CacheFirst', options: { cacheName: 'ocr-engine', expiration: { maxEntries: 20 } } },
           { urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\//, handler: 'StaleWhileRevalidate', options: { cacheName: 'fonts' } },
         ],
       },
