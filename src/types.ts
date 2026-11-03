@@ -59,6 +59,9 @@ export interface Settings {
   maxDrawdownPct: number;
   maxStockLossPct: number;
   seeded?: boolean;
+  // Cash is counted in portfolio value only after the user explicitly confirms that the recorded
+  // deposits/withdrawals/adjustments are complete. Never inferred from the presence of a deposit.
+  cashTracking?: { confirmedAt: string } | null;
 }
 
 export interface AppData {

@@ -1,31 +1,15 @@
 import { useMemo, useState } from 'react';
-import type { AppData, Currency, Txn } from './types';
+import type { AppData, Currency } from './types';
+import { applyImport, checkImportRows, type ImportRow } from './importer';
 import type { Portfolio } from './engine';
 import { Sheet } from './ui';
-import { newTxn } from './store';
 import { localISO } from './parser';
 import { fmtMoney, fmtQty, fmtDate, fmtFx } from './format';
+export { deriveImport } from './importer';
 
-/* Import holdings the user confirms were actually bought, using the figures Dime shows in its
-   order history: quantity, USD price per share, and the amount paid.
-   - Paid in THB (default): FX is derived, never typed:  FX = THB paid ÷ (quantity × USD price).
-     Stored as a THB-settled buy, so THB cost is exactly the amount paid and USD cost is exactly
-     quantity × price. Nothing is rounded before storage.
-   - Paid in USD: USD amount defaults to quantity × price; the user must enter the real FX.
-   A row may be linked to an existing PENDING order only when the user explicitly chooses so; the
-   pending record is then updated in place (same id), so no duplicate transaction is created. */
-
-interface Row { key: string; ticker: string; quantity: string; priceUSD: string; paid: string; payCur: Currency; fxRate: string; date: string; time: string; link: '' | 'separate' | string }
-
+// Logic (FX derivation, validation, applying to data) lives in ./importer and is unit-tested there.
+type Row = ImportRow;
 const blankRow = (ticker = ''): Row => ({ key: crypto.randomUUID(), ticker, quantity: '', priceUSD: '', paid: '', payCur: 'THB', fxRate: '', date: localISO(new Date()).slice(0, 10), time: '', link: '' });
-
-export function deriveImport(r: { quantity: string; priceUSD: string; paid: string; payCur: Currency; fxRate: string }) {
-  const q = Number(r.quantity), pu = Number(r.priceUSD), paid = Number(r.paid);
-  const usd = q > 0 && pu > 0 ? q * pu : NaN;
-  if (r.payCur === 'THB') return { usd, thb: paid, fx: paid > 0 && usd > 0 ? paid / usd : NaN };
-  const f = Number(r.fxRate);
-  return { usd: paid > 0 ? paid : usd, thb: (paid > 0 ? paid : usd) * f, fx: f };
-}
 
 export function ImportHoldings({ data, p, onClose, update }: { data: AppData; p: Portfolio; onClose: () => void; update: (fn: (d: AppData) => AppData) => void }) {
   const pendingTickers = [...new Set(p.pending.map(t => t.ticker).filter(Boolean))] as string[];
@@ -41,60 +25,26 @@ export function ImportHoldings({ data, p, onClose, update }: { data: AppData; p:
     return n;
   }));
   const pendingFor = (tk: string) => p.pending.filter(t => t.ticker === tk);
-  const usedLinks = rows.map(r => r.link).filter(l => l && l !== 'separate');
-  const refFx = data.fx.rate > 0 ? data.fx.rate : undefined;
-
-  const checks = useMemo(() => rows.map(r => {
-    const e: string[] = [], w: string[] = [];
-    const d = deriveImport(r);
-    if (!/^[A-Z]{1,5}(\.[A-Z])?$/.test(r.ticker)) e.push('Ticker');
-    if (!(Number(r.quantity) > 0)) e.push('จำนวนหุ้น');
-    if (!(Number(r.priceUSD) > 0)) e.push('ราคาซื้อ (USD)');
-    if (!(Number(r.paid) > 0)) e.push(r.payCur === 'THB' ? 'ยอดที่จ่าย (THB)' : 'ยอดที่จ่าย (USD)');
-    if (r.payCur === 'USD' && !(Number(r.fxRate) > 0)) e.push('อัตราแลกเปลี่ยนจริง');
-    if (!r.date) e.push('วันที่ซื้อ');
-    if (pendingFor(r.ticker).length && !r.link) e.push('เลือกว่าเกี่ยวกับคำสั่งรอดำเนินการหรือไม่');
-    if (r.link && r.link !== 'separate' && usedLinks.filter(l => l === r.link).length > 1) e.push('เลือกคำสั่งรอเดียวกันซ้ำ');
-    if (d.fx > 0 && refFx && Math.abs(d.fx / refFx - 1) > 0.03) w.push(`FX ${fmtFx(d.fx)} ต่างจากอัตราอ้างอิง ${fmtFx(refFx)} เกิน 3% — ตรวจตัวเลขอีกครั้ง`);
-    if (r.payCur === 'USD' && d.usd > 0 && Number(r.paid) > 0 && Math.abs(Number(r.paid) / (Number(r.quantity) * Number(r.priceUSD)) - 1) > 0.01) w.push('ยอด USD ไม่เท่ากับ จำนวน × ราคา (ต่างเกิน 1%)');
-    const pend = p.pending.find(t => t.id === r.link);
-    if (pend && pend.currency === 'THB' && r.payCur === 'THB' && Math.abs(Number(r.paid) - pend.amount) > 0.005) w.push(`ยอดที่จ่ายไม่ตรงกับคำสั่งรอ (${fmtMoney(pend.amount, 'THB')})`);
-    return { e, w, d };
-  }), [rows, p.pending, refFx]); // eslint-disable-line react-hooks/exhaustive-deps
+  const checks = useMemo(() => checkImportRows(data, rows).map(c => ({ e: c.errors, w: c.warnings, d: c.derived })), [data, rows]);
 
   const allOk = rows.length > 0 && checks.every(c => c.e.length === 0);
 
+  const [err, setErr] = useState('');
   const commit = () => {
-    const now = new Date().toISOString();
-    update(d => {
-      let txns = [...d.txns];
-      rows.forEach((r, i) => {
-        const q = Number(r.quantity), pu = Number(r.priceUSD), paid = Number(r.paid);
-        const fx = checks[i].d.fx;
-        const fields: Partial<Txn> = r.payCur === 'THB'
-          ? { currency: 'THB', amount: paid, price: paid / q, priceUSD: pu, fxRate: fx }
-          : { currency: 'USD', amount: paid, price: pu, priceUSD: pu, fxRate: fx };
-        Object.assign(fields, { type: 'BUY', status: 'EXECUTED', ticker: r.ticker, quantity: q, fees: 0 });
-        const pend = d.txns.find(t => t.id === r.link && t.status === 'PENDING');
-        const dt = `${r.date}T${r.time || (pend ? pend.datetime.slice(11, 16) : '09:00')}`;
-        if (pend) {
-          txns = txns.map(t => (t.id === pend.id ? {
-            ...t, ...fields, datetime: dt, updatedAt: now,
-            notes: `${t.notes ? t.notes + ' • ' : ''}ผู้ใช้ยืนยันว่าทำรายการสำเร็จ (นำเข้ายอดหุ้น ${fmtDate(now)})`,
-          } as Txn : t));
-        } else {
-          txns.push(newTxn({ ...fields, datetime: dt, source: 'import', notes: 'ยอดหุ้นที่ผู้ใช้ยืนยันว่าซื้อสำเร็จ (นำเข้ายอดหุ้น)' }));
-        }
-      });
-      return { ...d, txns };
-    });
-    onClose();
+    try {
+      const now = new Date().toISOString();
+      // validate against the current data first so a failure never leaves a partial import
+      applyImport(data, rows, now);
+      update(d => applyImport(d, rows, now));
+      onClose();
+    } catch (e) { setErr(String(e)); setStep('edit'); }
   };
 
   return (
     <Sheet title="นำเข้ายอดหุ้นที่ซื้อสำเร็จแล้ว" onClose={onClose}>
       {step === 'edit' ? (
         <div className="form">
+          {err && <div className="alert">{err}</div>}
           <p className="small">กรอกจาก <b>ประวัติคำสั่งซื้อใน Dime</b>: จำนวนหุ้น, ราคาซื้อ (USD) และยอดที่จ่าย — ระบบคำนวณอัตราแลกเปลี่ยนให้เอง ห้ามใช้ “มูลค่าปัจจุบัน” แทนยอดที่จ่าย</p>
           {rows.map((r, i) => {
             const pend = pendingFor(r.ticker);

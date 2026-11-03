@@ -78,7 +78,8 @@ export interface Portfolio {
   cancelled: Txn[];
   pendingTHB: number;
   estimated: boolean; // true when some position has no price and cost is used instead
-  cashTracked: boolean; // false until a deposit/withdrawal is recorded; cash is then excluded from totals
+  cashTracked: boolean; // true only after the user confirmed cash records are complete; otherwise cash is excluded from totals
+  cashTxnCount: number; // executed deposits, withdrawals, fees and adjustments recorded
   warnings: string[];
   fx: number;
 }
@@ -212,7 +213,8 @@ export function computePortfolio(data: AppData): Portfolio {
   const holdingsValueTHB = holdingsValueUSD * fx;
   for (const p of positions) p.weight = holdingsValueUSD > 0 ? (p.marketValueUSD / holdingsValueUSD) * 100 : 0;
 
-  const cashTracked = data.txns.some(t => t.status === 'EXECUTED' && (t.type === 'DEPOSIT' || t.type === 'WITHDRAWAL'));
+  const cashTracked = !!data.settings.cashTracking?.confirmedAt;
+  const cashTxnCount = data.txns.filter(t => t.status === 'EXECUTED' && ['DEPOSIT', 'WITHDRAWAL', 'FEE', 'ADJUSTMENT'].includes(t.type)).length;
   const cashTotalTHB = cash.THB + cash.USD * fx;
   const investedTHB = sum(positions.map(p => p.costTHB));
   const investedUSD = sum(positions.map(p => p.costUSD));
@@ -237,7 +239,7 @@ export function computePortfolio(data: AppData): Portfolio {
     realizedTHB, realizedUSD, dividendsTHB, feesTHB,
     dayChangeUSD, dayChangeTHB: dayChangeUSD !== undefined ? dayChangeUSD * fx : undefined,
     totalReturnTHB, totalReturnPct: netDepositsTHB > 0 ? (totalReturnTHB / netDepositsTHB) * 100 : investedTHB > 0 ? (totalReturnTHB / investedTHB) * 100 : 0,
-    pending, cancelled, pendingTHB, estimated, cashTracked, warnings: [...new Set(warnings)], fx,
+    pending, cancelled, pendingTHB, estimated, cashTracked, cashTxnCount, warnings: [...new Set(warnings)], fx,
   };
 }
 

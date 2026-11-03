@@ -1,7 +1,8 @@
 name: Test (branches and pull requests, no deploy)
 
-# Runs unit tests, type-check and a production build on every branch except main
-# and on pull requests. It never publishes anything; deployment happens only from main.
+# Runs unit tests, type-check, a production build and the end-to-end import test
+# (real Chromium, iPhone viewport) on every branch except main and on pull requests.
+# It never publishes anything; deployment happens only from main.
 
 on:
   push:
@@ -24,3 +25,5 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

@@ -46,7 +46,7 @@ export function Dashboard({ data, p, go, openTxn, openImport, context }: Ctx) {
       <section className="card grid-kv">
         <div><span>ต้นทุนหุ้นที่ถือ</span><b>{v(p.investedTHB)}</b></div>
         <div><span>มูลค่าหุ้น</span><b>{v(p.holdingsValueTHB)}</b></div>
-        <div><span>เงินสด</span>{p.cashTracked ? <><b>{v(p.cashTotalTHB)}</b><small className="muted">{fmtTHB(p.cashTHB)} + {fmtUSD(p.cashUSD)}</small></> : <><b className="muted">ไม่ได้ติดตาม</b><small className="muted">ยังไม่ได้บันทึกเงินฝาก จึงไม่นับรวมในมูลค่าพอร์ต</small></>}</div>
+        <div><span>เงินสด</span>{p.cashTracked ? <><b>{v(p.cashTotalTHB)}</b><small className="muted">{fmtTHB(p.cashTHB)} + {fmtUSD(p.cashUSD)}</small></> : <><b className="muted">ไม่ได้นับรวม</b><small className="muted">ยังไม่ได้ยืนยันว่ารายการเงินสดครบถ้วน</small><button className="link small" onClick={() => go('more:settings')}>ตั้งค่าเงินสด</button></>}</div>
         <div><span>เงินฝากสุทธิ</span><b>{v(p.netDepositsTHB)}</b></div>
         <div><span>ปันผลสุทธิ</span><b>{v(p.dividendsTHB)}</b></div>
         <div><span>ค่าธรรมเนียมรวม</span><b>{v(p.feesTHB)}</b></div>

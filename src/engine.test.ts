@@ -209,7 +209,7 @@ describe('Dime order-history import (3 Nov 2026 rows)', () => {
     ['QQQM', 0.0314253, 281.62, 299.91], ['VOO', 0.0320086, 692.0, 749.78],
   ];
   it('derives FX = THB paid ÷ (quantity × USD price) without rounding', async () => {
-    const { deriveImport } = await import('./onboarding');
+    const { deriveImport } = await import('./importer');
     const d = deriveImport({ quantity: '0.0236388', priceUSD: '280.47', paid: '224.76', payCur: 'THB', fxRate: '' });
     expect(d.usd).toBeCloseTo(6.629974236, 12);
     expect(d.fx).toBeCloseTo(224.76 / (0.0236388 * 280.47), 12);
