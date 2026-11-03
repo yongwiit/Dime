@@ -1,7 +1,7 @@
 // End-to-end test of "นำเข้าจากภาพ Dime" in a real browser at iPhone 13 size, using FULLY SYNTHETIC screenshots
 // (tests/fixtures/make-fixtures.py). Real OCR runs in the page (Tesseract.js served by the app itself).
 // Run after `npm run build`:  npm run test:e2e   (CHROME_PATH=/path/to/chrome to use a local Chrome)
-import { chromium, devices } from 'playwright';
+import { chromium, webkit, devices } from 'playwright';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -24,7 +24,10 @@ const stop = () => { try { server.kill(); } catch { /* ignore */ } };
 process.on('exit', stop);
 for (let i = 0; i < 60; i++) { try { if ((await fetch(BASE)).ok) break; } catch { /* starting */ } await new Promise(r => setTimeout(r, 500)); }
 
-const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH, args: ['--no-sandbox'] } : {});
+// BROWSER=webkit runs the same test in WebKit (Safari's engine); default Chromium. CHROME_PATH: local Chrome binary.
+const ENGINE = process.env.BROWSER === 'webkit' ? webkit : chromium;
+console.log(`engine: ${process.env.BROWSER === 'webkit' ? 'webkit' : 'chromium'}`);
+const browser = await ENGINE.launch(ENGINE === chromium && process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH, args: ['--no-sandbox'] } : {});
 const errors = [], external = [];
 async function newPage() {
   const ctx = await browser.newContext({ ...devices['iPhone 13'], locale: 'th-TH', timezoneId: 'Asia/Bangkok' });
@@ -50,11 +53,11 @@ async function readScreenshot(page, file) {
   await page.locator('[data-testid=pick-images]').setInputFiles(file);
   await page.locator('.shot img').first().waitFor();
   await page.locator('button', { hasText: /^อ่านข้อมูลจากภาพ/ }).click();
-  await page.locator('button', { hasText: 'ตรวจสอบสรุปก่อนนำเข้า' }).waitFor({ timeout: OCR_TIMEOUT });
+  await page.locator('.sticky-actions button.primary').waitFor({ timeout: OCR_TIMEOUT });
 }
 const rowValues = page => page.locator('[data-testid=ocr-row]').evaluateAll(rows => rows.map(r => {
-  const v = l => [...r.querySelectorAll('label')].find(x => x.firstChild?.textContent?.startsWith(l))?.querySelector('input,select')?.value;
-  const flagged = [...r.querySelectorAll('label.flag')].map(x => x.firstChild.textContent);
+  const v = l => [...r.querySelectorAll('.field')].find(x => x.querySelector('label')?.textContent?.startsWith(l))?.querySelector('input,select')?.value;
+  const flagged = [...r.querySelectorAll('.field.flag')].map(x => x.querySelector('label').textContent);
   return { ticker: v('ชื่อหุ้น'), quantity: v('จำนวนหุ้น'), price: v('ราคาที่ได้จริง'), thb: v('ยอดที่'), date: v('วันที่'), time: v('เวลา'), side: v('ประเภท'), flagged };
 }));
 
@@ -80,24 +83,40 @@ try {
   });
   const totalLine = await page.locator('.sticky-actions .tiny').innerText();
   check(`Review shows total ${thb(TRUTH.totalTHB)}`, totalLine.replace(/\s/g, '').includes(thb(TRUTH.totalTHB)), totalLine);
-  check('Cannot continue while fields are flagged / links unchosen', await page.locator('button', { hasText: 'ตรวจสอบสรุปก่อนนำเข้า' }).isDisabled());
+  const nextBtn = page.locator('.sticky-actions button.primary');
+  check('While fields are flagged: button reads "ไปยังรายการที่ต้องแก้" and is not ready', (await nextBtn.getAttribute('data-ready')) === 'no' && (await nextBtn.innerText()).includes('ไปยังรายการที่ต้องแก้'));
+  check('Footer explains how many rows still need attention', (await page.locator('[data-testid=pending-issues]').count()) === 1);
+  await nextBtn.tap();
+  check('Tapping it highlights the first row that needs attention (no summary yet)', (await page.locator('.import-row.attention').count()) === 1 && (await page.locator('button', { hasText: 'ยืนยันและนำเข้า' }).count()) === 0);
   const overflow = await page.evaluate(() => { const b = document.querySelector('.sheet-body'); return b.scrollWidth - b.clientWidth; });
   check('iPhone width: review screen has no horizontal overflow', overflow <= 1, `overflow ${overflow}px`);
 
   // the "user" compares each flagged value with the image: selects a missing side, confirms values that match
   for (const [i, v] of vals.entries()) {
     const row = page.locator('[data-testid=ocr-row]').nth(i);
-    if (v.side === '') await row.locator('label', { hasText: 'ประเภท' }).locator('select').selectOption(EXP[i].side);
-    for (const b of await row.locator('button', { hasText: 'ค่าถูกต้อง' }).all()) await b.click();
+    if (v.side === '') await row.locator('.field[data-field=side] select').selectOption(EXP[i].side);
+    // touch taps, as on a phone; the button must not be swallowed by focusing an input
+    while (await row.locator('button', { hasText: 'ค่าถูกต้อง' }).count()) {
+      const before = await row.locator('.field.flag').count();
+      await row.locator('button', { hasText: 'ค่าถูกต้อง' }).first().tap();
+      const after = await row.locator('.field.flag').count();
+      if (after >= before) { check(`Row ${i + 1}: tapping "ค่าถูกต้อง" clears the flag`, false, `${before} → ${after}`); break; }
+    }
   }
-  await page.locator('button', { hasText: /เชื่อมกับคำสั่งรอดำเนินการที่ยอดเงินตรงกัน \(2\)/ }).click();
+  await page.locator('button', { hasText: /เชื่อมกับคำสั่งรอดำเนินการที่ยอดเงินตรงกัน \(2\)/ }).tap();
   vals = await rowValues(page);
   check('After review: no flagged fields left', vals.every(v => v.flagged.length === 0), JSON.stringify(vals.map(v => v.flagged)));
-  await page.locator('button', { hasText: 'ตรวจสอบสรุปก่อนนำเข้า' }).click();
+  check('Time field keeps seconds (text field, not an iOS time picker)', vals.every((v, i) => v.time === EXP[i].time), JSON.stringify(vals.map(v => v.time)));
+  check('After review the button is ready', (await nextBtn.getAttribute('data-ready')) === 'yes');
+  const fieldOverflow = await page.evaluate(() => [...document.querySelectorAll('.import-row input, .import-row select')].filter(el => el.getBoundingClientRect().right > el.closest('.import-row').getBoundingClientRect().right + 1).length);
+  check('No input or select sticks out of its card (date/time width)', fieldOverflow === 0, `${fieldOverflow} overflowing`);
+  const crops = await page.locator('.row-crop-img').evaluateAll(imgs => imgs.map(i => i.naturalHeight > 40 && i.src.startsWith('data:image/jpeg')));
+  check('Each row shows its own image crop', crops.length === EXP.length && crops.every(Boolean), JSON.stringify(crops));
+  await nextBtn.tap();
   const summary = await page.locator('.sheet-body').innerText();
   check('Summary: 2 rows update their pending order, 3 are new', (summary.match(/อัปเดตคำสั่งรอดำเนินการเดิม/g) || []).length === 2 && (summary.match(/รายการใหม่/g) || []).length === 3);
   check('Nothing saved before "ยืนยันและนำเข้า"', (await readRaw(page)).txns.length === before.txns.length && (await readRaw(page)).txns.every(t => t.status === 'PENDING'));
-  await page.locator('button', { hasText: 'ยืนยันและนำเข้า (Confirm and Import)' }).click();
+  await page.locator('button', { hasText: 'ยืนยันและนำเข้า (Confirm and Import)' }).tap();
   await waitStored(page, d => d.txns.length === before.txns.length + 3, 'screenshot import');
 
   await page.reload({ waitUntil: 'networkidle' });
@@ -118,7 +137,9 @@ try {
   await readScreenshot(page, COMPLETED);
   const dup = await page.locator('.dup').count();
   check(`Re-import: rows flagged as possible duplicates (${EXP.length})`, dup === EXP.length, `flagged ${dup}`);
-  check('Re-import: confirmation blocked', await page.locator('button', { hasText: 'ตรวจสอบสรุปก่อนนำเข้า' }).isDisabled());
+  check('Re-import: confirmation blocked', (await page.locator('.sticky-actions button.primary').getAttribute('data-ready')) === 'no');
+  await page.locator('.sticky-actions button.primary').tap();
+  check('Re-import: tapping does not open the summary', (await page.locator('button', { hasText: 'ยืนยันและนำเข้า' }).count()) === 0);
   await page.locator('.sheet-head button').click();
   check('Re-import cancelled: data unchanged', (await readRaw(page)).txns.length === after.txns.length);
 

@@ -1,7 +1,7 @@
 name: Test (branches and pull requests, no deploy)
 
-# Runs unit tests, type-check, a production build and the end-to-end import test
-# (real Chromium, iPhone viewport) on every branch except main and on pull requests.
+# Runs unit tests, type-check, a production build and the end-to-end tests (iPhone 13 viewport, touch)
+# in Chromium and in WebKit (Safari's engine) on every branch except main and on pull requests.
 # It never publishes anything; deployment happens only from main.
 
 on:
@@ -16,6 +16,10 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,5 +29,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
       - run: npm run test:e2e
+        env:
+          BROWSER: ${{ matrix.browser }}
