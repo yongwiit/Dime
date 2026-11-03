@@ -55,3 +55,10 @@ The calculation engine is `src/engine.ts`; its tests are in `src/engine.test.ts`
 - Total return % = total return ÷ net deposits (falls back to cost basis when no deposits are recorded).
 - Daily change uses the previous close returned by Finnhub; it is shown as "—" when unavailable.
 - Drawdown is measured on holdings value ÷ cost basis, from daily snapshots, so new deposits do not look like gains.
+
+## Importing from a Dime screenshot (OCR)
+- Screenshot rows become ordinary import rows and are saved through the same `checkImportRows` / `applyImport` path as manual import; no separate accounting.
+- Values are copied exactly as read (digit strings). THB amount is the amount Dime shows; USD cost = quantity × USD price; FX = THB ÷ USD cost. Fees are not shown on that screen, so `fees = 0` and the THB amount is treated as all-in (disclosed on the review screen).
+- Time keeps seconds when visible (e.g. `2025-10-14T10:05:33`).
+- Possible duplicates (an EXECUTED record with the same side, ticker, date, quantity, USD price and amount, or the same row twice in one batch) block the import until the row is removed or the user explicitly marks it as a new transaction.
+- SELL rows are checked against shares held at that time, including other rows in the same batch.

@@ -4,3 +4,8 @@ dev-dist
 .env
 .env.*
 *.local
+public/tesseract
+
+# never commit real broker screenshots
+tests/fixtures/real-*
+*.real.png

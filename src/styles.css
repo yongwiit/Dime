@@ -164,3 +164,18 @@ th:first-child, td:first-child { text-align: left; } th { color: var(--muted); f
 .import-row { border: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; margin: 0; }
 .import-row legend { font-size: 13px; color: var(--muted); padding: 0 4px; }
 .review-card { margin: 0; }
+
+.shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.shot { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.shot img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; object-position: top; border-radius: 10px; border: 1px solid var(--line); }
+.shot figcaption { flex-wrap: wrap; }
+.row-crop { position: relative; width: 100%; overflow: hidden; border-radius: 10px; border: 1px solid var(--line); background: #000; }
+.row-crop img { position: absolute; left: 0; display: block; }
+.import-row label.flag > input, .import-row label.flag > select { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
+.import-row label.flag { color: var(--warn); }
+.dup { color: var(--warn); align-items: flex-start; }
+.form.center { align-items: center; text-align: center; padding: 20px 0; }
+/* fieldsets default to min-width: min-content, which made two-column inputs overflow on phones */
+.import-row { min-width: 0; }
+.import-row .grid2, .form .grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.import-row input, .import-row select { min-width: 0; }

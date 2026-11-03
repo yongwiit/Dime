@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AppData, Currency } from './types';
-import { applyImport, checkImportRows, type ImportRow } from './importer';
+import { applyImport, checkImportRows, pendingCandidates, type ImportRow } from './importer';
 import type { Portfolio } from './engine';
 import { Sheet } from './ui';
 import { localISO } from './parser';
@@ -24,7 +24,7 @@ export function ImportHoldings({ data, p, onClose, update }: { data: AppData; p:
     }
     return n;
   }));
-  const pendingFor = (tk: string) => p.pending.filter(t => t.ticker === tk);
+  const pendingFor = (tk: string) => pendingCandidates(data, { ticker: tk, side: 'BUY' });
   const checks = useMemo(() => checkImportRows(data, rows).map(c => ({ e: c.errors, w: c.warnings, d: c.derived })), [data, rows]);
 
   const allOk = rows.length > 0 && checks.every(c => c.e.length === 0);
@@ -113,14 +113,15 @@ export function ImportHoldings({ data, p, onClose, update }: { data: AppData; p:
 }
 
 /** Shown instead of zero-valued figures when there are no executed holdings yet. */
-export function Onboarding({ p, onImport, onAdd, onPending, onCsv, context }: { p: Portfolio; onImport: () => void; onAdd: () => void; onPending: () => void; onCsv: () => void; context: string }) {
+export function Onboarding({ p, onImport, onScreenshot, onAdd, onPending, onCsv, context }: { p: Portfolio; onImport: () => void; onScreenshot: () => void; onAdd: () => void; onPending: () => void; onCsv: () => void; context: string }) {
   return (
     <section className="card onboarding">
       <h3>ยังไม่มีหุ้นที่บันทึกว่าซื้อสำเร็จในแอปนี้</h3>
       <p className="small">ตัวเลขพอร์ตจะยังไม่แสดงจนกว่าจะบันทึกหุ้นที่ซื้อสำเร็จ — <b>ไม่ได้หมายความว่าพอร์ตจริงใน Dime มีมูลค่าเป็นศูนย์</b></p>
       {p.pending.length > 0 && <p className="small hint">มีคำสั่งรอดำเนินการ {p.pending.length} รายการ ระบบไม่เปลี่ยนเป็น “สำเร็จ” เอง หาก Dime แสดงว่าคุณถือหุ้นเหล่านี้แล้ว ให้ยืนยันพร้อมกรอกจำนวนหุ้น ต้นทุน และ FX จริง</p>}
       <div className="onb-actions">
-        <button className="btn primary" onClick={onImport}>นำเข้ายอดหุ้นที่ถืออยู่</button>
+        <button className="btn primary" onClick={onScreenshot}>นำเข้าจากภาพ Dime</button>
+        <button className="btn" onClick={onImport}>นำเข้ายอดหุ้นที่ถืออยู่ (กรอกเอง)</button>
         {p.pending.length > 0 && <button className="btn" onClick={onPending}>ดูคำสั่งรอดำเนินการ</button>}
         <button className="btn" onClick={onAdd}>บันทึกการซื้อทีละรายการ</button>
         <button className="btn ghost" onClick={onCsv}>นำเข้าจาก CSV</button>

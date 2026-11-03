@@ -149,3 +149,39 @@ describe('cash tracking is explicit, never inferred', () => {
     expect(computePortfolio(d).cashTracked).toBe(false);
   });
 });
+
+describe('importer extensions used by screenshot import', () => {
+  const now = '2026-11-03T15:00:00.000Z';
+  const baseData = (): AppData => ({ ...seeded(), txns: [] });
+  const row = (p: Partial<ImportRow>): ImportRow => ({ key: 'k', ticker: 'VOO', quantity: '0.02', priceUSD: '700', paid: '476', payCur: 'THB', fxRate: '', date: '2026-11-04', time: '10:00:05', link: 'separate', ...p });
+  it('unverified fields block the import until cleared', () => {
+    const d = baseData();
+    expect(checkImportRows(d, [row({ unverified: ['quantity'] })])[0].errors.join()).toMatch(/ต้องตรวจสอบกับภาพ: จำนวนหุ้น/);
+    expect(() => applyImport(d, [row({ unverified: ['quantity'] })])).toThrow();
+    expect(() => applyImport(d, [row({ unverified: [] })], now)).not.toThrow();
+  });
+  it('keeps seconds in the transaction time', () => {
+    const out = applyImport(baseData(), [row({})], now, () => 'n1');
+    expect(out.txns[0].datetime).toBe('2026-11-04T10:00:05');
+  });
+  it('sell larger than holdings is rejected; sell within holdings saved as SELL with exact THB proceeds', () => {
+    const bought = applyImport(baseData(), [row({ quantity: '0.03', paid: '714', date: '2026-11-03' })], now, () => 'b1');
+    expect(checkImportRows(bought, [row({ side: 'SELL', quantity: '0.04' })])[0].errors.join()).toMatch(/ขายได้ไม่เกินจำนวนที่ถือ/);
+    const sold = applyImport(bought, [row({ side: 'SELL', quantity: '0.01', paid: '240' })], now, () => 's1');
+    const s = sold.txns.find(t => t.id === 's1')!;
+    expect(s).toMatchObject({ type: 'SELL', status: 'EXECUTED', amount: 240, currency: 'THB', quantity: 0.01 });
+    expect(computePortfolio(sold).positions[0].quantity).toBeCloseTo(0.02, 12);
+  });
+  it('a buy and a sell in the same batch are checked together', () => {
+    expect(checkImportRows(baseData(), [row({ key: 'a' }), row({ key: 'b', side: 'SELL', quantity: '0.01', time: '11:00:00' })]).every(c => c.errors.length === 0)).toBe(true);
+  });
+  it('pending candidates must have the same side', () => {
+    const d = seeded();
+    expect(checkImportRows(d, [row({ ticker: 'VOO', side: 'SELL', link: d.txns.find(t => t.ticker === 'VOO')!.id })])[0].errors.join()).toMatch(/คนละประเภท|ขายได้ไม่เกิน/);
+  });
+  it('possible duplicate can be imported only with an explicit decision', () => {
+    const once = applyImport(baseData(), [row({})], now, () => 'x1');
+    expect(checkImportRows(once, [row({})])[0].errors.join()).toMatch(/อาจซ้ำ/);
+    expect(checkImportRows(once, [row({ allowDuplicate: true })])[0].errors).toEqual([]);
+  });
+});
