@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computePortfolio, validateTxn, maxDrawdownFromPeak } from './engine';
+import { computePortfolio, validateTxn, maxDrawdownFromPeak, checkAgainstPortfolio } from './engine';
 import { parseCommand } from './parser';
 import { txnsToCSV, csvToTxns } from './csv';
 import type { AppData, Txn } from './types';
@@ -80,6 +80,77 @@ describe('portfolio engine', () => {
     ]));
     expect(p.warnings.some(w => w.includes('มากกว่าที่ถืออยู่'))).toBe(true);
     expect(p.positions.length).toBe(0);
+  });
+
+  it('oversell does not overstate cash: proceeds and fees scaled to shares held', () => {
+    const p = computePortfolio(data([
+      tx({ type: 'DEPOSIT', amount: 100, currency: 'USD', fxRate: 35 }),
+      tx({ ticker: 'X', quantity: 1, price: 10, amount: 10, fxRate: 35, datetime: '2026-01-02T10:00' }),
+      tx({ type: 'SELL', ticker: 'X', quantity: 2, price: 12, amount: 24, fees: 2, fxRate: 35, datetime: '2026-02-01T10:00' }),
+    ]));
+    // only 1 share existed: proceeds 12, fee 1
+    expect(p.cashUSD).toBeCloseTo(100 - 10 + 12 - 1);
+    expect(p.realizedUSD).toBeCloseTo(11 - 10);
+    expect(p.feesTHB).toBeCloseTo(1 * 35);
+  });
+
+  it('repeated partial sells: average cost is unchanged by sells, realized sums correctly', () => {
+    const p = computePortfolio(data([
+      tx({ ticker: 'X', quantity: 10, price: 10, amount: 100, fees: 1, fxRate: 34, datetime: '2026-01-01T10:00' }),
+      tx({ ticker: 'X', quantity: 10, price: 20, amount: 200, fees: 1, fxRate: 36, datetime: '2026-01-15T10:00' }),
+      tx({ type: 'SELL', ticker: 'X', quantity: 5, price: 18, amount: 90, fees: 0.5, fxRate: 35, datetime: '2026-02-01T10:00' }),
+      tx({ type: 'SELL', ticker: 'X', quantity: 7, price: 22, amount: 154, fees: 0.5, fxRate: 33, datetime: '2026-03-01T10:00' }),
+    ], { X: { ticker: 'X', price: 25, asOf: '', source: 'manual' } }));
+    const avg = 302 / 20;
+    const x = p.positions[0];
+    expect(x.quantity).toBeCloseTo(8);
+    expect(x.avgCostUSD).toBeCloseTo(avg);
+    expect(x.costUSD).toBeCloseTo(avg * 8);
+    expect(p.realizedUSD).toBeCloseTo((89.5 - avg * 5) + (153.5 - avg * 7));
+    const costTHB = 101 * 34 + 201 * 36, avgTHB = costTHB / 20;
+    expect(p.realizedTHB).toBeCloseTo((89.5 * 35 - avgTHB * 5) + (153.5 * 33 - avgTHB * 7));
+    expect(x.costTHB).toBeCloseTo(avgTHB * 8);
+  });
+
+  it('mixed THB and USD settlement with fees stays consistent in both currencies', () => {
+    const p = computePortfolio(data([
+      tx({ type: 'DEPOSIT', amount: 7000, currency: 'THB', fxRate: 35 }),
+      tx({ type: 'DEPOSIT', amount: 100, currency: 'USD', fxRate: 35 }),
+      tx({ ticker: 'X', quantity: 1, price: 3500, amount: 3500, fees: 35, currency: 'THB', fxRate: 35, datetime: '2026-01-02T10:00' }), // $101 cost
+      tx({ ticker: 'X', quantity: 1, price: 98, amount: 98, fees: 1, currency: 'USD', fxRate: 34, datetime: '2026-01-03T10:00' }), // $99 cost, ฿3366
+      tx({ type: 'SELL', ticker: 'X', quantity: 2, price: 110, amount: 220, fees: 2, currency: 'USD', fxRate: 36, datetime: '2026-02-01T10:00' }),
+    ]));
+    expect(p.positions.length).toBe(0);
+    expect(p.cashTHB).toBeCloseTo(7000 - 3535);
+    expect(p.cashUSD).toBeCloseTo(100 - 99 + 218);
+    expect(p.realizedUSD).toBeCloseTo(218 - 200);
+    expect(p.realizedTHB).toBeCloseTo(218 * 36 - (3535 + 99 * 34));
+    expect(p.feesTHB).toBeCloseTo(35 + 34 + 72);
+  });
+
+  it('closing a position: realized + remaining cost equals all net cash flows', () => {
+    const txns = [
+      tx({ ticker: 'X', quantity: 3, price: 50, amount: 150, fees: 1, fxRate: 34, datetime: '2026-01-01T10:00' }),
+      tx({ type: 'SELL', ticker: 'X', quantity: 1, price: 60, amount: 60, fees: 1, fxRate: 35, datetime: '2026-02-01T10:00' }),
+      tx({ ticker: 'X', quantity: 2, price: 40, amount: 80, fees: 1, fxRate: 33, datetime: '2026-03-01T10:00' }),
+      tx({ type: 'SELL', ticker: 'X', quantity: 4, price: 55, amount: 220, fees: 1, fxRate: 36, datetime: '2026-04-01T10:00' }),
+    ];
+    const p = computePortfolio(data(txns));
+    expect(p.positions.length).toBe(0);
+    expect(p.realizedUSD).toBeCloseTo((59 + 219) - (151 + 81));
+    expect(p.realizedTHB).toBeCloseTo((59 * 35 + 219 * 36) - (151 * 34 + 81 * 33));
+    expect(p.cashUSD).toBeCloseTo(p.realizedUSD);
+  });
+
+  it('entry check blocks selling more than held at that date', () => {
+    const d = data([
+      tx({ id: 'b1', ticker: 'X', quantity: 2, price: 10, amount: 20, fxRate: 35, datetime: '2026-01-01T10:00' }),
+      tx({ id: 'b2', ticker: 'X', quantity: 5, price: 10, amount: 50, fxRate: 35, datetime: '2026-03-01T10:00' }),
+    ]);
+    const sell = { type: 'SELL' as const, status: 'EXECUTED' as const, ticker: 'X', quantity: 3, datetime: '2026-02-01T10:00' };
+    expect(checkAgainstPortfolio(d, sell).length).toBe(1); // only 2 held in February
+    expect(checkAgainstPortfolio(d, { ...sell, datetime: '2026-04-01T10:00' })).toEqual([]);
+    expect(checkAgainstPortfolio(d, { ...sell, status: 'PENDING' })).toEqual([]);
   });
 
   it('validation requires execution details for executed trades only', () => {

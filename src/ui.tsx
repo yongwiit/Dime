@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { AppData, Currency, Txn, TxnStatus, TxnType } from './types';
-import { validateTxn } from './engine';
+import { validateTxn, checkAgainstPortfolio } from './engine';
 import { fmtMoney, fmtQty, TYPE_TH, STATUS_TH } from './format';
 import { localISO } from './parser';
 
@@ -67,7 +67,7 @@ export function TxnForm({ initial, data, onSave, onCancel, title }: { initial: P
     if (c.ticker) c.ticker = c.ticker.trim().toUpperCase();
     return c;
   }, [t, trade]);
-  const errors = validateTxn(computed);
+  const errors = [...validateTxn(computed), ...checkAgainstPortfolio(data, computed)];
   const tickers = Object.keys(data.meta);
   return (
     <Sheet title={title} onClose={onCancel}>

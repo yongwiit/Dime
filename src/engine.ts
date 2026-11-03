@@ -164,11 +164,14 @@ export function computePortfolio(data: AppData): Portfolio {
         const p = get(t.ticker!);
         let q = t.quantity!;
         if (q > p.quantity + EPS) {
-          warnings.push(`ขาย ${t.ticker} ${q} หุ้น มากกว่าที่ถืออยู่ (${round(p.quantity, 6)}) วันที่ ${t.datetime.slice(0, 10)} — คำนวณเท่าที่ถืออยู่`);
+          warnings.push(`ขาย ${t.ticker} ${q} หุ้น มากกว่าที่ถืออยู่ (${round(p.quantity, 6)}) วันที่ ${t.datetime.slice(0, 10)} — นับเฉพาะส่วนที่ถืออยู่จริง ทั้งจำนวนหุ้น เงินที่ได้รับ และค่าธรรมเนียม โปรดแก้ไขรายการนี้`);
           q = p.quantity;
         }
-        const gross = t.amount || (t.quantity! * t.price!);
-        const net = gross - fees;
+        // scale proceeds and fees to the shares actually held, so cash is never overstated by an oversell
+        const f = t.quantity! > 0 ? q / t.quantity! : 0;
+        if (f < 1) feesTHB -= toTHB(fees * (1 - f), t.currency, r);
+        const gross = (t.amount || (t.quantity! * t.price!)) * f;
+        const net = gross - fees * f;
         cash[t.currency] += net;
         if (p.quantity <= EPS) break;
         const portion = q / p.quantity;
@@ -234,6 +237,22 @@ export function computePortfolio(data: AppData): Portfolio {
     totalReturnTHB, totalReturnPct: netDepositsTHB > 0 ? (totalReturnTHB / netDepositsTHB) * 100 : investedTHB > 0 ? (totalReturnTHB / investedTHB) * 100 : 0,
     pending, cancelled, pendingTHB, estimated, warnings: [...new Set(warnings)], fx,
   };
+}
+
+/** Shares of `ticker` held just before `datetime`, ignoring transaction `excludeId` (the one being edited). */
+export function heldQuantity(data: AppData, ticker: string, datetime: string, excludeId?: string) {
+  const txns = data.txns.filter(t => t.id !== excludeId && t.datetime <= datetime);
+  const p = computePortfolio({ ...data, txns, fx: { ...data.fx, rate: data.fx.rate > 0 ? data.fx.rate : 1 } });
+  return p.positions.find(x => x.ticker === ticker)?.quantity ?? 0;
+}
+
+/** Extra checks that need the rest of the portfolio. Returns error messages (Thai). */
+export function checkAgainstPortfolio(data: AppData, t: Partial<Txn>): string[] {
+  if (t.type === 'SELL' && t.status === 'EXECUTED' && t.ticker && t.quantity && t.datetime) {
+    const held = heldQuantity(data, t.ticker, t.datetime, t.id);
+    if (t.quantity > held + EPS) return [`ขายได้ไม่เกินจำนวนที่ถือ ณ วันที่ขาย (${round(held, 6)} หุ้น)`];
+  }
+  return [];
 }
 
 export function sum(a: number[]) { return a.reduce((s, x) => s + x, 0); }

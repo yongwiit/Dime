@@ -22,7 +22,7 @@ The calculation engine is `src/engine.ts`; its tests are in `src/engine.test.ts`
 - Cost removed = (shares sold ÷ shares held) × cost basis, in USD and THB.
 - Realized P/L (USD) = net proceeds in USD − USD cost removed.
 - Realized P/L (THB) = net proceeds × sell-date rate − THB cost removed. **It therefore includes FX gain/loss.**
-- A sell larger than the shares held is capped at the shares held and flagged as a warning.
+- A sell larger than the shares held cannot be saved from the form or the assistant. If one arrives through CSV import or a later edit of an earlier buy, it is capped at the shares held: quantity, proceeds **and** fees are all scaled by (shares held ÷ shares sold), so cash is not overstated, and a warning asks the user to correct it.
 
 ## Unrealized P/L
 - Market value (USD) = shares × latest price. Prices are either entered manually or fetched from Finnhub; each price shows its source and timestamp.

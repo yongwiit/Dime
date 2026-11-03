@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppData, Txn } from './types';
 import type { Portfolio } from './engine';
-import { monthlySummary, validateTxn } from './engine';
+import { monthlySummary, validateTxn, checkAgainstPortfolio } from './engine';
 import { parseCommand, type ParseResult } from './parser';
 import { answer } from './assistant';
 import { fetchFx, fetchQuote, fetchResearch, type Research } from './market';
@@ -56,7 +56,7 @@ export function Assistant({ data, update, openTxn }: Ctx) {
         {msgs.map(m => (
           <div key={m.id} className={`msg ${m.role}`}>
             {m.text && <div className="bubble">{m.text}</div>}
-            {m.proposal && <Proposal m={m} onSave={d => save(m.id, d)} onDiscard={() => setState(m.id, 'discarded')} onEdit={() => openTxn(m.proposal!.draft, 'แก้ไขก่อนบันทึก', () => setState(m.id, 'saved'))} />}
+            {m.proposal && <Proposal m={m} data={data} onSave={d => save(m.id, d)} onDiscard={() => setState(m.id, 'discarded')} onEdit={() => openTxn(m.proposal!.draft, 'แก้ไขก่อนบันทึก', () => setState(m.id, 'saved'))} />}
           </div>
         ))}
         <div ref={end} />
@@ -71,11 +71,11 @@ export function Assistant({ data, update, openTxn }: Ctx) {
   );
 }
 
-function Proposal({ m, onSave, onDiscard, onEdit }: { m: Msg; onSave: (d: Partial<Txn>) => void; onDiscard: () => void; onEdit: () => void }) {
+function Proposal({ m, data, onSave, onDiscard, onEdit }: { m: Msg; data: AppData; onSave: (d: Partial<Txn>) => void; onDiscard: () => void; onEdit: () => void }) {
   const r = m.proposal!;
   const [asPending, setAsPending] = useState(r.draft.status === 'PENDING');
   const draft = { ...r.draft, status: asPending ? 'PENDING' : 'EXECUTED' } as Partial<Txn>;
-  const errs = validateTxn(draft);
+  const errs = [...validateTxn(draft), ...checkAgainstPortfolio(data, draft)];
   const canExec = r.missingForExecuted.length === 0;
   return (
     <div className="bubble proposal">
@@ -241,11 +241,15 @@ function SettingsView({ data, p, update, confirm }: Ctx) {
     update(d => ({ ...d, prices }));
     setMsg(out.join(' • ') || 'ยังไม่มีหุ้นที่ถือ'); setBusy(false);
   };
-  const backup = () => download(`dime-backup-${today()}.json`, JSON.stringify(data, null, 2), 'application/json');
+  const backup = () => {
+    // the Finnhub key is deliberately excluded so the backup file can be stored or shared without exposing it
+    const { finnhubKey: _omit, ...settings } = data.settings;
+    download(`dime-backup-${today()}.json`, JSON.stringify({ ...data, settings }, null, 2), 'application/json');
+  };
   const restore = async (f: File) => {
     try {
       const d = migrate(JSON.parse(await f.text()));
-      confirm({ title: 'กู้คืนข้อมูล?', danger: true, ok: 'แทนที่ข้อมูลปัจจุบัน', body: <p>ไฟล์มี {d.txns.length} รายการ ข้อมูลปัจจุบัน ({data.txns.length} รายการ) จะถูกแทนที่ทั้งหมด แนะนำให้สำรองข้อมูลปัจจุบันก่อน</p>, onOk: () => { update(() => d); setMsg('กู้คืนข้อมูลแล้ว'); } });
+      confirm({ title: 'กู้คืนข้อมูล?', danger: true, ok: 'แทนที่ข้อมูลปัจจุบัน', body: <p>ไฟล์มี {d.txns.length} รายการ ข้อมูลปัจจุบัน ({data.txns.length} รายการ) จะถูกแทนที่ทั้งหมด แนะนำให้สำรองข้อมูลปัจจุบันก่อน</p>, onOk: () => { update(cur => ({ ...d, settings: { ...d.settings, finnhubKey: cur.settings.finnhubKey ?? d.settings.finnhubKey } })); setMsg('กู้คืนข้อมูลแล้ว'); } });
     } catch (e) { setMsg('อ่านไฟล์ไม่สำเร็จ: ' + String(e)); }
   };
   const importCsv = async (f: File) => {
@@ -278,7 +282,7 @@ function SettingsView({ data, p, update, confirm }: Ctx) {
           <div className="row gap"><input className="grow" type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value.trim())} placeholder="สมัครฟรีที่ finnhub.io" />
             <button className="btn" onClick={() => { update(d => ({ ...d, settings: { ...d.settings, finnhubKey: key || undefined } })); setMsg(key ? 'บันทึก key ในเครื่องนี้แล้ว' : 'ลบ key แล้ว'); }}>บันทึก</button></div>
         </label>
-        <p className="tiny muted">key เก็บเฉพาะในเครื่องนี้ ไม่ถูกส่งขึ้น GitHub และไม่รวมในไฟล์ CSV (แต่รวมในไฟล์สำรอง JSON)</p>
+        <p className="tiny muted">key เก็บเฉพาะในเครื่องนี้ ไม่ถูกส่งขึ้น GitHub และไม่รวมในไฟล์ CSV หรือไฟล์สำรอง JSON (หลังกู้คืนในเครื่องใหม่ต้องใส่ key อีกครั้ง)</p>
         <button className="btn small" disabled={busy || !data.settings.finnhubKey} onClick={refreshPrices}>อัปเดตราคาหุ้นที่ถือ</button>
       </section>
       <section className="card form">
