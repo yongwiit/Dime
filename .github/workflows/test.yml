@@ -1,0 +1,26 @@
+name: Test (branches and pull requests, no deploy)
+
+# Runs unit tests, type-check and a production build on every branch except main
+# and on pull requests. It never publishes anything; deployment happens only from main.
+
+on:
+  push:
+    branches-ignore: [main, gh-pages]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
