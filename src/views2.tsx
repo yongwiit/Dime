@@ -286,6 +286,21 @@ function SettingsView({ data, p, update, confirm, storage }: Ctx) {
         <p className="tiny muted">key เก็บเฉพาะในเครื่องนี้ ไม่ถูกส่งขึ้น GitHub และไม่รวมในไฟล์ CSV หรือไฟล์สำรอง JSON (หลังกู้คืนในเครื่องใหม่ต้องใส่ key อีกครั้ง)</p>
         <button className="btn small" disabled={busy || !data.settings.finnhubKey} onClick={refreshPrices}>อัปเดตราคาหุ้นที่ถือ</button>
       </section>
+      <section className="card form" id="cash-tracking">
+        <h3>การนับเงินสดในพอร์ต</h3>
+        {data.settings.cashTracking?.confirmedAt ? <>
+          <p className="small">✅ นับเงินสดในมูลค่าพอร์ตแล้ว (ยืนยันเมื่อ {fmtDate(data.settings.cashTracking.confirmedAt)}) • ยอดคำนวณ {fmtTHB(p.cashTHB)} + {fmtMoney(p.cashUSD, 'USD')}</p>
+          <button className="btn small" onClick={() => confirm({ title: 'หยุดนับเงินสด?', ok: 'หยุดนับเงินสด', body: <p>มูลค่าพอร์ตจะแสดงเฉพาะมูลค่าหุ้น รายการเงินสดที่บันทึกไว้ยังอยู่ครบ</p>, onOk: () => update(d => ({ ...d, settings: { ...d.settings, cashTracking: null } })) })}>หยุดนับเงินสด</button>
+        </> : <>
+          <p className="small">ตอนนี้<b>ไม่นับเงินสด</b>ในมูลค่าพอร์ต เพราะยังไม่ได้ยืนยันว่าบันทึกเงินฝาก ถอน ค่าธรรมเนียม และยอดยกมาครบแล้ว การมีรายการฝากเงินเพียงบางรายการไม่ทำให้ระบบเริ่มนับเอง</p>
+          <p className="small">ยอดที่คำนวณจากรายการที่บันทึกไว้ ({p.cashTxnCount} รายการเงินสด): <b>{fmtTHB(p.cashTHB)}</b> + <b>{fmtMoney(p.cashUSD, 'USD')}</b></p>
+          <p className="tiny muted">วิธีง่ายที่สุด: บันทึกรายการ “ปรับปรุง” เป็นยอดเงินสดคงเหลือใน Dime ณ วันหนึ่ง แล้วบันทึกเงินฝาก/ถอนหลังจากนั้นทุกครั้ง จากนั้นตรวจว่ายอดด้านบนตรงกับ Dime</p>
+          <button className="btn small primary" onClick={() => {
+            if (p.cashTHB < -0.005 || p.cashUSD < -0.005) { setMsg('ยอดเงินสดที่คำนวณได้ติดลบ แสดงว่ารายการเงินสดยังไม่ครบ — บันทึกเงินฝากหรือยอดยกมาก่อน'); return; }
+            confirm({ title: 'ยืนยันการนับเงินสด', ok: 'ยืนยัน ยอดตรงกับ Dime', body: <div className="small"><p>ยอดเงินสดที่จะนับรวมในพอร์ต: <b>{fmtTHB(p.cashTHB)}</b> + <b>{fmtMoney(p.cashUSD, 'USD')}</b></p><p>กรุณายืนยันเฉพาะเมื่อยอดนี้ตรงกับเงินสดคงเหลือในบัญชี Dime ของคุณ</p></div>, onOk: () => update(d => ({ ...d, settings: { ...d.settings, cashTracking: { confirmedAt: new Date().toISOString() } } })) });
+          }}>ยืนยันว่ารายการเงินสดครบถ้วน</button>
+        </>}
+      </section>
       <section className="card form">
         <h3>เกณฑ์ความเสี่ยง</h3>
         <div className="grid2">

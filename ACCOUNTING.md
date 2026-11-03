@@ -35,6 +35,18 @@ The calculation engine is `src/engine.ts`; its tests are in `src/engine.test.ts`
   Deposit +, withdrawal −, buy −(amount + fees), sell +(amount − fees), dividend +(amount − withholding), fee −, adjustment ± (signed).
 - If cash goes negative (for example, buys entered without the deposits that funded them), the app shows a warning instead of inventing a balance.
 
+### When cash is counted in portfolio value
+- Cash is **excluded** from total portfolio value by default.
+- It is included only after the user explicitly confirms, in Settings → "การนับเงินสดในพอร์ต", that the recorded deposits, withdrawals, fees and opening-balance adjustments are complete and the computed balance matches the Dime account (`settings.cashTracking.confirmedAt`).
+- Recording a deposit or withdrawal never turns this on by itself. Confirmation is refused while the computed balance is negative. The user can turn it off at any time; the cash records are kept.
+
+## Importing from Dime order history
+- Inputs per order: quantity, USD price per share, amount paid (THB).
+- FX = THB paid ÷ (quantity × USD price), computed at full precision; the user does not type it.
+- Stored as a THB-settled BUY: `amount` = THB paid, `fxRate` = derived FX, `priceUSD` = Dime's USD price, `price` = THB per share. Hence THB cost = amount paid exactly, USD cost = quantity × USD price.
+- Linking to a PENDING order updates that record in place (same id); otherwise a new BUY is added. All rows are validated before anything is saved (all-or-nothing). Logic: `src/importer.ts`; tests: `src/importer.test.ts`, `tests/e2e/import.e2e.mjs`.
+- The derived FX may include Dime's FX spread or fees, which cannot be separated without Dime's fee detail.
+
 ## Dividends
 - Enter the gross dividend as the amount and the withholding tax in fees. Net dividends increase cash and total return.
 

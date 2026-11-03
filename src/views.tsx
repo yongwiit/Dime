@@ -31,7 +31,7 @@ export function Dashboard({ data, p, go, openTxn, openImport, context }: Ctx) {
       {p.positions.length === 0 && Math.abs(p.cashTotalTHB) < 0.005 && <Onboarding p={p} context={context} onImport={openImport} onAdd={() => openTxn({ type: 'BUY' }, 'บันทึกการซื้อ')} onPending={() => go('txns:PENDING')} onCsv={() => go('more:settings')} />}
       {(p.positions.length > 0 || Math.abs(p.cashTotalTHB) >= 0.005) && <>
       <section className="hero card">
-        <div className="row between"><span className="muted">มูลค่าพอร์ตรวม{p.estimated && ' (ประมาณการ)'}</span>
+        <div className="row between"><span className="muted">{p.cashTracked ? 'มูลค่าพอร์ตรวม' : 'มูลค่าหุ้นรวม'}{p.estimated && ' (ประมาณการ — ยังไม่มีราคาตลาด)'}</span>
           <div className="seg small">{(['THB', 'USD'] as const).map(c => <button key={c} className={cur === c ? 'on' : ''} onClick={() => setCur(c)}>{c}</button>)}</div></div>
         <div className="big">{v(p.totalValueTHB)}</div>
         <div className="muted small">{cur === 'THB' ? fmtUSD(p.totalValueUSD || 0) : fmtTHB(p.totalValueTHB)} • {data.fx.rate > 0 ? `${data.fx.rate.toFixed(2)} ฿/$` : '—'}</div>
@@ -46,7 +46,7 @@ export function Dashboard({ data, p, go, openTxn, openImport, context }: Ctx) {
       <section className="card grid-kv">
         <div><span>ต้นทุนหุ้นที่ถือ</span><b>{v(p.investedTHB)}</b></div>
         <div><span>มูลค่าหุ้น</span><b>{v(p.holdingsValueTHB)}</b></div>
-        <div><span>เงินสด</span><b>{v(p.cashTotalTHB)}</b><small className="muted">{fmtTHB(p.cashTHB)} + {fmtUSD(p.cashUSD)}</small></div>
+        <div><span>เงินสด</span>{p.cashTracked ? <><b>{v(p.cashTotalTHB)}</b><small className="muted">{fmtTHB(p.cashTHB)} + {fmtUSD(p.cashUSD)}</small></> : <><b className="muted">ไม่ได้นับรวม</b><small className="muted">ยังไม่ได้ยืนยันว่ารายการเงินสดครบถ้วน</small><button className="link small" onClick={() => go('more:settings')}>ตั้งค่าเงินสด</button></>}</div>
         <div><span>เงินฝากสุทธิ</span><b>{v(p.netDepositsTHB)}</b></div>
         <div><span>ปันผลสุทธิ</span><b>{v(p.dividendsTHB)}</b></div>
         <div><span>ค่าธรรมเนียมรวม</span><b>{v(p.feesTHB)}</b></div>
@@ -195,7 +195,7 @@ export function Transactions({ data, update, openTxn, confirm, initialStatus }: 
             <div><span className={`badge t-${t.type}`}>{TYPE_TH[t.type]}</span> <b>{t.ticker ?? ''}</b> <span className={`badge s-${t.status}`}>{STATUS_TH[t.status]}</span></div>
             <b>{fmtMoney(t.amount, t.currency)}</b>
           </div>
-          <div className="small muted">{fmtDate(t.datetime)}{t.quantity ? ` • ${fmtQty(t.quantity)} หุ้น` : ''}{t.price ? ` @ ${fmtMoney(t.price, t.currency)}` : ''}{t.fxRate ? ` • ${t.fxRate} ฿/$` : ''}{t.fees ? ` • ค่าธรรมเนียม ${fmtMoney(t.fees, t.currency)}` : ''}</div>
+          <div className="small muted">{fmtDate(t.datetime)}{t.quantity ? ` • ${fmtQty(t.quantity)} หุ้น` : ''}{t.priceUSD && t.currency !== 'USD' ? ` @ ${fmtUSD(t.priceUSD)}` : t.price ? ` @ ${fmtMoney(t.price, t.currency)}` : ''}{t.fxRate ? ` • ${t.fxRate} ฿/$` : ''}{t.fees ? ` • ค่าธรรมเนียม ${fmtMoney(t.fees, t.currency)}` : ''}</div>
           {t.notes && <div className="small">{t.notes}</div>}
           <div className="row gap wrap actions">
             {t.status === 'PENDING' && <button className="btn small primary" onClick={() => openTxn({ ...t, status: 'EXECUTED' }, 'ยืนยันว่าทำรายการสำเร็จ')}>ยืนยันว่าสำเร็จ</button>}

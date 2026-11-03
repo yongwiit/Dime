@@ -78,6 +78,8 @@ export interface Portfolio {
   cancelled: Txn[];
   pendingTHB: number;
   estimated: boolean; // true when some position has no price and cost is used instead
+  cashTracked: boolean; // true only after the user confirmed cash records are complete; otherwise cash is excluded from totals
+  cashTxnCount: number; // executed deposits, withdrawals, fees and adjustments recorded
   warnings: string[];
   fx: number;
 }
@@ -211,6 +213,8 @@ export function computePortfolio(data: AppData): Portfolio {
   const holdingsValueTHB = holdingsValueUSD * fx;
   for (const p of positions) p.weight = holdingsValueUSD > 0 ? (p.marketValueUSD / holdingsValueUSD) * 100 : 0;
 
+  const cashTracked = !!data.settings.cashTracking?.confirmedAt;
+  const cashTxnCount = data.txns.filter(t => t.status === 'EXECUTED' && ['DEPOSIT', 'WITHDRAWAL', 'FEE', 'ADJUSTMENT'].includes(t.type)).length;
   const cashTotalTHB = cash.THB + cash.USD * fx;
   const investedTHB = sum(positions.map(p => p.costTHB));
   const investedUSD = sum(positions.map(p => p.costUSD));
@@ -224,9 +228,9 @@ export function computePortfolio(data: AppData): Portfolio {
   const pending = data.txns.filter(t => t.status === 'PENDING').sort((a, b) => b.datetime.localeCompare(a.datetime));
   const cancelled = data.txns.filter(t => t.status === 'CANCELLED');
   const pendingTHB = sum(pending.map(t => toTHB(t.amount, t.currency, t.fxRate || fx)));
-  const totalValueTHB = holdingsValueTHB + cashTotalTHB;
+  const totalValueTHB = holdingsValueTHB + (cashTracked ? cashTotalTHB : 0);
   const totalReturnTHB = unrealizedTHB + realizedTHB + dividendsTHB;
-  if (cash.THB < -0.01 || cash.USD < -0.01) warnings.push('ยอดเงินสดติดลบ — อาจยังไม่ได้บันทึกรายการฝากเงิน (Deposit) จึงแสดงเงินสดตามที่บันทึกไว้เท่านั้น');
+  if (cashTracked && (cash.THB < -0.01 || cash.USD < -0.01)) warnings.push('ยอดเงินสดติดลบ — อาจยังไม่ได้บันทึกรายการฝากเงิน (Deposit) จึงแสดงเงินสดตามที่บันทึกไว้เท่านั้น');
   return {
     positions, closed, cashTHB: cash.THB, cashUSD: cash.USD, cashTotalTHB,
     holdingsValueUSD, holdingsValueTHB, totalValueTHB, totalValueUSD: totalValueTHB / fx,
@@ -235,7 +239,7 @@ export function computePortfolio(data: AppData): Portfolio {
     realizedTHB, realizedUSD, dividendsTHB, feesTHB,
     dayChangeUSD, dayChangeTHB: dayChangeUSD !== undefined ? dayChangeUSD * fx : undefined,
     totalReturnTHB, totalReturnPct: netDepositsTHB > 0 ? (totalReturnTHB / netDepositsTHB) * 100 : investedTHB > 0 ? (totalReturnTHB / investedTHB) * 100 : 0,
-    pending, cancelled, pendingTHB, estimated, warnings: [...new Set(warnings)], fx,
+    pending, cancelled, pendingTHB, estimated, cashTracked, cashTxnCount, warnings: [...new Set(warnings)], fx,
   };
 }
 
